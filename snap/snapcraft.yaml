@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: $SNAP/launch
+    command: desktop-launch $SNAP/launch
     plugs:
       - network
       - home
