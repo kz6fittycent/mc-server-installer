@@ -1,0 +1,30 @@
+name: mc-server-installer
+version: 1.0
+summary: Minecraft Server Downloader and Installer
+description: |
+    A Minecraft Server installer snap. Keeps your server running the latest version of Minecraft. 
+grade: stable
+confinement: strict
+
+apps:
+  mc-server-installer:
+    command: $SNAP/launch
+    plugs:
+      - network
+      - home
+
+parts:
+  launcher:
+    plugin: dump
+    source: scripts
+
+game:
+    plugin: nil
+    build-packages:
+      - ca-certificates
+      - ca-certificates-java
+      - openjdk-8-jre-headless
+    stage-packages:
+      - openjdk-8-jre-headless
+      - ca-certificates
+      - ca-certificates-java
