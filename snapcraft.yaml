@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: desktop-launch $SNAP/launch
+    command: java -Xmx1024M -Xms1024M -jar server.jar nogui
     plugs:
       - network
       - home
