@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: 1.0
+version: git
 summary: Minecraft Server Downloader and Installer
 description: |
     A Minecraft Server installer snap. Keeps your server running the latest version of Minecraft. 
