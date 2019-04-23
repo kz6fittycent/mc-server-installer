@@ -1,8 +1,7 @@
-
 #!/bin/bash
 
 
-export LIBGL_DRIVERS_PATH=$SNAP/usr/lib/x86_64-linux-gnu/dri
+#export LIBGL_DRIVERS_PATH=$SNAP/usr/lib/x86_64-linux-gnu/dri
 export JAVA_HOME=$SNAP/usr/lib/jvm/java-8-openjdk-amd64/
 export PATH="$JAVA_HOME/bin/:$PATH"
 
@@ -12,9 +11,9 @@ rm -rf $SNAP_USER_DATA/jdk*
 set -e
 (
 	cd $SNAP_USER_DATA
-	$SNAP/download-server.py
+	$SNAP/download-launcher.py
 )
 
 java \
 	-Duser.home=$HOME/appdata \
-	-Xmx1024M -Xms1024M -jar $SNAP_USER_DATA/server.jar nogui
+	-Xmx1024M -Xms1024M -jar nogui $SNAP_USER_DATA/server.jar
