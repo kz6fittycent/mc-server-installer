@@ -17,5 +17,4 @@ set -e
 
 java \
 	-Duser.home=$HOME/appdata \
-	-jar $SNAP_USER_DATA/Minecraft.jar
-	
+	-Xmx1024M -Xms1024M -jar $SNAP_USER_DATA/server.jar nogui
