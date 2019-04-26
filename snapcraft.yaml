@@ -8,20 +8,25 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: $SNAP/launch
+    command: python3 download-server.py
     plugs:
       - network
       - home
+      - network-bind
 
 parts:
   launcher:
-    plugin: dump
-    source: scripts
+    source: https://github.com/kz6fittycent/mc-server-installer
+    source-type: git
+    plugin: python
+    python-version: python3
 
   server:
     plugin: nil
     build-packages:
       - openjdk-8-jre-headless
+      - python3
       
     stage-packages:
       - openjdk-8-jre-headless
+      - python3
