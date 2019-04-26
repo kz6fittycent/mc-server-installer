@@ -15,14 +15,12 @@ apps:
       - network-bind
 
 parts:
-  launcher:
+  mc-server-installer:
     source: https://github.com/kz6fittycent/mc-server-installer
     source-type: git
     plugin: python
     python-version: python3
 
-  server:
-    plugin: nil
     build-packages:
       - openjdk-8-jre-headless
       - python3
@@ -30,3 +28,8 @@ parts:
     stage-packages:
       - openjdk-8-jre-headless
       - python3
+
+  publish:
+    plugin: copy
+    files:
+      ./download-server.py: download-server.py
