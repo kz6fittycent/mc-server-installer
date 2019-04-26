@@ -8,5 +8,8 @@ import re
 
 
 def main():
-    urlretrieve("https://launcher.mojang.com/v1/objects/3737db93722a9e39eeada7c27e7aca28b144ffa7/server.jar", "server.jar")   
+    
+    urlretrieve("https://launcher.mojang.com/v1/objects/f1a0073671057f01aa843443fef34330281333ce/server.jar", "server.jar")
+    subprocess.call(['java','-Xmx4096M', '-Xms1024M','-jar','server.jar','nogui'])
+    
 main()
