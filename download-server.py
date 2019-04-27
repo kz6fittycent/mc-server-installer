@@ -12,7 +12,7 @@ import time
 
 print (50 * '#')
 print (50 * '-')
-print ("         WELCOME TO MC-SERVER-INSTALLER")
+print ("         MC-SERVER-INSTALLER")
 print (50 * '-')
 print (50 * '#')
 time.sleep(1)
