@@ -2,7 +2,7 @@ name: mc-server-installer
 version: git
 summary: Minecraft Server Downloader and Installer
 description: |
-    A Minecraft Server installer snap. Keeps your server running the latest version of Minecraft. 
+    A Minecraft Server installer snap.  
 grade: stable
 confinement: strict
 
