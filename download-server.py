@@ -23,6 +23,6 @@ print()
 def main():
     
     urlretrieve("https://launcher.mojang.com/v1/objects/f1a0073671057f01aa843443fef34330281333ce/server.jar", "server.jar")
-    subprocess.call(['/snap/usr/bin/share/java','-Xmx4096M', '-Xms1024M','-jar','server.jar','nogui'])
+    subprocess.call(['$SNAP/usr/lib/jvm/java-1.8.0-openjdk-amd64/jre/bin/java','-Xmx4096M', '-Xms1024M','-jar','server.jar','nogui'])
     
 main()
