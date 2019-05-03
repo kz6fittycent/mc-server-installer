@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: python3 $SNAP/bin/download-server.py
+    command: run-server.sh
     plugs:
       - network
       - home
@@ -32,4 +32,5 @@ parts:
   publish:
     plugin: copy
     files:
+      ./run-server.sh: /bin/run-server.sh
       ./download-server.py: /bin/download-server.py
