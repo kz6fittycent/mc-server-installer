@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: $SNAP/bin/download-server.py
+    command: /bin/download-server.py
     plugs:
       - network
       - home
