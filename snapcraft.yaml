@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: download-server.py
+    command: bin/download-server.py
     plugs:
       - network
       - home
@@ -32,4 +32,4 @@ parts:
   publish:
     plugin: copy
     files:
-      ./download-server.py: download-server.py
+      ./download-server.py: bin/download-server.py
