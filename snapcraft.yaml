@@ -18,6 +18,7 @@ parts:
   mc-server-installer:
     source: https://github.com/kz6fittycent/mc-server-installer
     source-type: git
+    plugin: nil
     
     build-packages:
       - openjdk-8-jre-headless
