@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: bin/download-server.py
+    command: $SNAP bin/run-server.sh
     plugs:
       - network
       - home
@@ -18,8 +18,6 @@ parts:
   mc-server-installer:
     source: https://github.com/kz6fittycent/mc-server-installer
     source-type: git
-    plugin: python
-    python-version: python3
 
     build-packages:
       - openjdk-8-jre-headless
@@ -32,4 +30,4 @@ parts:
   publish:
     plugin: copy
     files:
-      ./download-server.py: bin/download-server.py
+      ./run-server.sh: bin/run-server.sh
