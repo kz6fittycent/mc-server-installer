@@ -6,7 +6,7 @@
 
 if [ "$SNAP_ARCH" = "amd64" ]; then
   ARCH="x86_64-linux-gnu"
-elif [ "$SNAP_ARCH" = "i386" ]; then
+elif [ "$SNAP_ARCH" = "armhf" ]; then
   ARCH="arm-linux-gnueabihf"
 else
   ARCH="$SNAP_ARCH-linux-gnu"
