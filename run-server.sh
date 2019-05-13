@@ -21,6 +21,7 @@ export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.8.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 # Rock n' Roll
+screen -D
 
 cd $SNAP_USER_DATA
 
@@ -44,8 +45,5 @@ java -Xmx4096M -Xms1024M -jar server.jar nogui
 
 # Agree to the EULA
 
-echo "#eula=false" >> eula.txt
-echo "eula=true" >> eula.txt
-
-echo "By changing the setting to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula)."
+echo "Please mark the EULA to eula=true located in ~/snap/mc-installer/current/eula.txt"
 
