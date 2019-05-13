@@ -27,6 +27,7 @@ parts:
     stage-packages:
       - openjdk-8-jre-headless
       - wget
+      - screen
 
   publish:
     plugin: copy
