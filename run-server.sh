@@ -21,7 +21,7 @@ export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.8.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 # Rock n' Roll
-screen -D
+#screen -D
 
 cd $SNAP_USER_DATA
 
