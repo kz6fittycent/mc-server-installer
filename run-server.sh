@@ -10,11 +10,6 @@ else
   ARCH="$SNAP_ARCH-linux-gnu"
 fi
 
-CHOICE1=$(java -Xmx2048M -Xms1024M -jar server.jar nogui)
-CHOICE2=$(java -Xmx4096M -Xms1024M -jar server.jar nogui)
-CHOICE3=$(java -Xmx6144M -Xms1024M -jar server.jar nogui)
-CHOICE4=$(java -Xmx9192M -Xms1024M -jar server.jar nogui)
-
 # START THE INSTALLER
 
 echo "Welcome to MC-SERVER-INSTALLER"
@@ -37,11 +32,18 @@ sleep 1s
 
 rm server.jar
 
-wget https://launcher.mojang.com/v1/objects/f1a0073671057f01aa843443fef34330281333ce/server.jar 
+wget https://launcher.mojang.com/v1/objects/ed76d597a44c5266be2a7fcd77a8270f1f0bc118/server.jar
 
 sleep 2s 
 
 # Simple menu
+
+# MENU VARIABLES
+
+CHOICE1=$(java -Xmx2048M -Xms1024M -jar server.jar nogui)
+CHOICE2=$(java -Xmx4096M -Xms1024M -jar server.jar nogui)
+CHOICE3=$(java -Xmx6144M -Xms1024M -jar server.jar nogui)
+CHOICE4=$(java -Xmx9192M -Xms1024M -jar server.jar nogui)
 
 while true; do
 
