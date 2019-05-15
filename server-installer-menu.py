@@ -36,7 +36,7 @@ while loop:          ## While loop which will keep going until loop = False
         os.system('./2.sh')
     elif choice == 2:
         print ("Starting server with 4GB max...")
-        subprocess.call(['sh','4.sh'])
+        os.system('./4.sh')
     elif choice == 3:
         print ("Starting server with 6GB max...")
         subprocess.call(['sh','6.sh'])
