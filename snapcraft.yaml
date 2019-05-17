@@ -2,7 +2,7 @@ name: mc-server-installer
 version: git
 summary: Minecraft Server Downloader and Installer
 description: |
-    A Minecraft Server installer snap.  
+    A Minecraft Server installer snap that downloads the latest .jar file and allows you to start your server with the amount of RAM you choose. 
 grade: stable
 confinement: strict
 
