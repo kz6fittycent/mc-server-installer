@@ -27,8 +27,8 @@ def print_menu():
   
 loop=True      
   
-while loop:          ## While loop which will keep going until loop = False
-    print_menu()    ## Displays menu
+while loop:          
+    print_menu()    
     choice = str(input("Enter your choice: "))
     
     choice = int(choice)
@@ -56,8 +56,9 @@ while loop:          ## While loop which will keep going until loop = False
         subprocess.call(['sh','$SNAP/24.sh'])
     elif choice == 8:
         print ("Exiting. Goodbye!")
-        ## You can add your code or functions here
-        loop=False # This will make the while loop to end as not value of loop is set to False
+        
+        loop=False 
+        
     else:
-        # Any integer inputs other than values above, print an error message
+        
         print("Invalid choice, please choose a menu item.")
