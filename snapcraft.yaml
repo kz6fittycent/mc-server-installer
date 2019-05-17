@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: python3 $SNAP/server-installer-menu.py
+    command: mc-server-installer.sh
     plugs:
       - network
       - home
@@ -18,27 +18,18 @@ parts:
   mc-server-installer:
     source: https://github.com/kz6fittycent/mc-server-installer
     source-type: git
-    plugin: python
-    python-version: python3
+    plugin: nil
     
     build-packages:
       - openjdk-8-jre-headless
       - wget
-      - python3
+
       
     stage-packages:
       - openjdk-8-jre-headless
       - wget
-      - python3
 
   publish:
     plugin: copy
     files:
-      ./2.sh: 2.sh
-      ./4.sh: 4.sh
-      ./6.sh: 6.sh
-      ./8.sh: 8.sh
-      ./12.sh: 12.sh
-      ./16.sh: 16.sh
-      ./24.sh: 24.sh
-      ./server-installer-menu.py: server-installer-menu.py
+      ./mc-server-installer.sh: mc-server-installer.sh
