@@ -5,7 +5,8 @@ import time
 import os
 import sys
 
-os.environ['SNAP']
+os.environ['SNAP']=$SNAP
+os.getenv('SNAP')=$SNAP
 
 print()
 def print_menu():       
@@ -35,24 +36,25 @@ while loop:          ## While loop which will keep going until loop = False
     
     if choice == 1:     
         print ("Starting server with 2GB max...")
-        subprocess.call(['sh','2.sh'])
+        subprocess.call(['sh','$SNAP/2.sh'])
     elif choice == 2:
         print ("Starting server with 4GB max...")
+        subprocess.call(['sh','$SNAP/4.sh'])
     elif choice == 3:
         print ("Starting server with 6GB max...")
-        subprocess.call(['sh','6.sh'])
+        subprocess.call(['sh','$SNAP/6.sh'])
     elif choice == 4:
         print ("Starting server with 8GB max...")
-        subprocess.call(['sh','8.sh'])
+        subprocess.call(['sh','$SNAP/8.sh'])
     elif choice == 5:
         print ("Starting server with 12GB max...")
-        subprocess.call(['sh','12.sh'])
+        subprocess.call(['sh','$SNAP/12.sh'])
     elif choice == 6:
         print ("Starting server with 16GB max...")
-        subprocess.call(['sh','16.sh'])
+        subprocess.call(['sh','$SNAP/16.sh'])
     elif choice == 7:
         print ("Starting server with 24GB max...")
-        subprocess.call(['sh','24.sh'])
+        subprocess.call(['sh','$SNAP/24.sh'])
     elif choice == 8:
         print ("Exiting. Goodbye!")
         ## You can add your code or functions here
