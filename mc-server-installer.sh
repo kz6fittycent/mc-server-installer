@@ -63,7 +63,7 @@ options=(
     "Quit"
 )
 
-PS3="Enter a number (1-6): "
+PS3="Enter a number (1-7): "
 
 select option in "${#options[@]}"; do
     case "$REPLY" in
@@ -72,7 +72,7 @@ select option in "${#options[@]}"; do
         3) java -Xmx4096M -Xms1024M -jar server.jar nogui;;
         4) java -Xmx6144M -Xms1024M -jar server.jar nogui;;
         5) java -Xmx9192M -Xms1024M -jar server.jar nogui;;
-        6) java -Xmx16384-Xms1024M -jar server.jar nogui;;
+        6) java -Xmx16384 -Xms1024M -jar server.jar nogui;;
         7) break;;
     esac
 done
