@@ -67,7 +67,7 @@ PS3="Enter a number (1-7): "
 
 select option in "${#options[@]}"; do
     case "$REPLY" in
-        1) sed -ie s/false/true/g eula.txt
+        1) sed -ie s/false/true/g eula.txt;;
         2) java -Xmx2048M -Xmx1024M -jar server.jar nogui;;
         3) java -Xmx4096M -Xms1024M -jar server.jar nogui;;
         4) java -Xmx6144M -Xms1024M -jar server.jar nogui;;
