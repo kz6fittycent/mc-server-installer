@@ -35,7 +35,7 @@ sleep 1s
 
 rm server.jar
 
-wget https://launcher.mojang.com/v1/objects/f1a0073671057f01aa843443fef34330281333ce/server.jar 
+wget https://launcher.mojang.com/v1/objects/ed76d597a44c5266be2a7fcd77a8270f1f0bc118/server.jar
 
 # Run the server
 
