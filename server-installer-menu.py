@@ -5,7 +5,8 @@ import time
 import os
 import sys
 
-os.environ['/snap/mc-server-installer/current']=SNAP
+export SNAP
+os.environ.get("SNAP")
 
 print()
 def print_menu():       
