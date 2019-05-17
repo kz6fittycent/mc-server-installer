@@ -4,7 +4,9 @@ import subprocess
 import time
 import os
 import sys
- 
+
+os.environ['SNAP']
+
 print()
 def print_menu():       
     print (20 * "-" , "MC-SERVER-INSTALLER MENU" , 20 * "-")
