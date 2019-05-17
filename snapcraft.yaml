@@ -8,7 +8,7 @@ confinement: strict
 
 apps:
   mc-server-installer:
-    command: mc-server-installer.sh
+    command: bash $SNAP/mc-server-installer.sh
     plugs:
       - network
       - home
