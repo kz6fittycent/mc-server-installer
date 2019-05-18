@@ -12,11 +12,11 @@ fi
 
 
 # START THE INSTALLER
-echo ""
+echo "-------------------------------"
 echo "Welcome to MC-SERVER-INSTALLER"
 echo ""
 echo "MIT LICENSE"
-echo ""
+echo "-------------------------------"
 sleep 2s
 
 # java paths
@@ -27,33 +27,10 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
 
-# Get the server jar
-
-echo "Getting latest server.jar..."
-
-sleep 1s 
-
-rm server.jar
-
-wget https://launcher.mojang.com/v1/objects/ed76d597a44c5266be2a7fcd77a8270f1f0bc118/server.jar
-
-# Run the server
-
-#echo "Running the server..."
-
 sleep 2s 
 
-#DIALOG
-echo "MENU"
-echo ""
-
-sleep 2s
-echo "Please mark the EULA to eula=true located in ~/snap/mc-installer/current/eula.txt"
-echo ""
-
-sleep 4s
-
 options=(
+    "Download latest .jar"
     "Agree to the EULA"
     "Run MC server with max 2GB of RAM"
     "Run MC server with max 4GB of RAM"
@@ -66,13 +43,15 @@ options=(
 PS3="Enter a number (1-7): "
 
 select option in "${#options[@]}"; do
+
     case "$REPLY" in
-        1) sed -ie s/false/true/g eula.txt;;
-        2) java -Xmx2048M -Xmx1024M -jar server.jar nogui;;
-        3) java -Xmx4096M -Xms1024M -jar server.jar nogui;;
-        4) java -Xmx6144M -Xms1024M -jar server.jar nogui;;
-        5) java -Xmx9192M -Xms1024M -jar server.jar nogui;;
-        6) java -Xmx16384 -Xms1024M -jar server.jar nogui;;
-        7) break;;
+        1) rm server.jar && wget https://launcher.mojang.com/v1/objects/ed76d597a44c5266be2a7fcd77a8270f1f0bc118/server.jar;;
+        2) sed -ie s/false/true/g eula.txt;;
+        3) java -Xmx2048M -Xmx1024M -jar server.jar nogui;;
+        4) java -Xmx4096M -Xms1024M -jar server.jar nogui;;
+        5) java -Xmx6144M -Xms1024M -jar server.jar nogui;;
+        6) java -Xmx9192M -Xms1024M -jar server.jar nogui;;
+        7) java -Xmx16384 -Xms1024M -jar server.jar nogui;;
+        8) break;;
     esac
 done
