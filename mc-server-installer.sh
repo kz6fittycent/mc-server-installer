@@ -30,7 +30,7 @@ cd $SNAP_USER_DATA
 sleep 2s 
 
 options=(
-    "Download latest .jar"
+    "Download latest server.jar"
     "Agree to the EULA"
     "Run MC server with max 2GB of RAM"
     "Run MC server with max 4GB of RAM"
@@ -40,7 +40,7 @@ options=(
     "Quit"
 )
 
-PS3="Enter a number (1-7): "
+PS3="Enter a number (1-${#options[@]}): "
 
 select option in "${#options[@]}"; do
 
