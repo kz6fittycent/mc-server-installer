@@ -19,6 +19,19 @@ echo "MIT LICENSE"
 echo "-------------------------------"
 sleep 2s
 
+
+echo "             MENU"
+echo ""
+echo "1) Download latest server.jar"
+echo "2) Agree to the EULA"
+echo "3) Run MC server with max 2GB of RAM"
+echo "4) Run MC server with max 4GB of RAM"
+echo "5) Run MC server with max 6GB of RAM"
+echo "6) Run MC server with max 8GB of RAM"
+echo "7) Run MC server with max 16GB of RAM"
+echo "8) Quit"
+echo ""
+
 # java paths
 export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.8.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
@@ -26,8 +39,6 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 # Rock n' Roll
 
 cd $SNAP_USER_DATA
-
-sleep 2s 
 
 options=(
     "Download latest server.jar"
