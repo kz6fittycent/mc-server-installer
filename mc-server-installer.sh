@@ -40,16 +40,16 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
 
-options=(
-    "Download latest server.jar"
-    "Agree to the EULA"
-    "Run MC server with max 2GB of RAM"
-    "Run MC server with max 4GB of RAM"
-    "Run MC server with max 6GB of RAM"
-    "Run MC server with max 8GB of RAM"
-    "Run MC server with max 16GB of RAM"
-    "Quit"
-)
+#options=(
+#    "Download latest server.jar"
+#    "Agree to the EULA"
+#    "Run MC server with max 2GB of RAM"
+#    "Run MC server with max 4GB of RAM"
+#    "Run MC server with max 6GB of RAM"
+#    "Run MC server with max 8GB of RAM"
+#    "Run MC server with max 16GB of RAM"
+#    "Quit"
+#)
 
 PS3="Enter a number (1-${#options[@]}): "
 
