@@ -22,12 +22,14 @@ parts:
     
     build-packages:
       - openjdk-8-jre-headless
-      - wget
+      - curl
+      - sed
+      - jq
 
       
     stage-packages:
       - openjdk-8-jre-headless
-      - wget
+      - curl
       - sed
       - jq
 
