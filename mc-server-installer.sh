@@ -40,23 +40,23 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
 
-#options=(
-#    "Download latest server.jar"
-#    "Agree to the EULA"
-#    "Run MC server with max 2GB of RAM"
-#    "Run MC server with max 4GB of RAM"
-#    "Run MC server with max 6GB of RAM"
-#    "Run MC server with max 8GB of RAM"
-#    "Run MC server with max 16GB of RAM"
-#    "Quit"
-#)
+options=(
+    "Download latest server.jar"
+    "Agree to the EULA"
+    "Run MC server with max 2GB of RAM"
+    "Run MC server with max 4GB of RAM"
+    "Run MC server with max 6GB of RAM"
+    "Run MC server with max 8GB of RAM"
+    "Run MC server with max 16GB of RAM"
+    "Quit"
+)
 
 PS3="Enter a number (1-${#options[@]}): "
 
 select option in "${#options[@]}"; do
 
     case "$REPLY" in
-        1) rm server.jar && wget https://launcher.mojang.com/v1/objects/ed76d597a44c5266be2a7fcd77a8270f1f0bc118/server.jar;;
+        1) rm server.jar && wget https://launcher.mojang.com/v1/objects/808be3869e2ca6b62378f9f4b33c946621620019/server.jar;;
         2) sed -ie s/false/true/g eula.txt;;
         3) java -Xmx2048M -Xmx1024M -jar server.jar nogui;;
         4) java -Xmx4096M -Xms1024M -jar server.jar nogui;;
