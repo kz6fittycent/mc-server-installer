@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# VARIABLES
+# ARCH VARIABLES
 
 if [ "$SNAP_ARCH" = "amd64" ]; then
   ARCH="x86_64-linux-gnu"
@@ -9,6 +9,16 @@ elif [ "$SNAP_ARCH" = "armhf" ]; then
 else
   ARCH="$SNAP_ARCH-linux-gnu"
 fi
+
+# DEFINE LATEST JAR
+LATEST=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.latest.release'`
+
+# DEFINE URL
+MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.versions[] |select(.id=="'"$LATEST"'") |.url'`
+
+# URL CONT'D
+JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
+
 
 
 # START THE INSTALLER
@@ -56,7 +66,7 @@ PS3="Enter a number (1-${#options[@]}): "
 select option in "${#options[@]}"; do
 
     case "$REPLY" in
-        1) rm server.jar && wget https://launcher.mojang.com/v1/objects/808be3869e2ca6b62378f9f4b33c946621620019/server.jar;;
+        1) curl -so server.jar $JAR_URL;;
         2) sed -ie s/false/true/g eula.txt;;
         3) java -Xmx2048M -Xmx1024M -jar server.jar nogui;;
         4) java -Xmx4096M -Xms1024M -jar server.jar nogui;;
