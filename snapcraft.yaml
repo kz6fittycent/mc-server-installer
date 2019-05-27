@@ -29,6 +29,7 @@ parts:
       - openjdk-8-jre-headless
       - wget
       - sed
+      - jq
 
   publish:
     plugin: copy
