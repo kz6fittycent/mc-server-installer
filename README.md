@@ -7,8 +7,8 @@ A Minecraft server installer and configuration tool
 
 MC-SERVER-INSTALLER is not an officially supported or licensed application of Mojang.
 
-Select option #1 and the latest server.jar will be downloaded. MC-SERVER-INSTALLER will 
-perform a first run. Now you may select option #2 to agree to the EULA.
+Select option #1 and the latest server.jar will be downloaded. Then, select option 2,
+and MC-SERVER-INSTALLER will perform a first run and agree to the EULA.
 
 ### NO. THIS WON'T BE CHANGED! BECAUSE LEGAL STUFF...
 
@@ -18,6 +18,8 @@ setting up your server's configuration, which is located in:
  ```
  ~/snap/mc-server-installer/current
  ```
+To update, just run option 1 again. No need to agree to the EULA. 
+
 
 This snap package was built from scratch with an MIT License, by kz6fittycent:
  
