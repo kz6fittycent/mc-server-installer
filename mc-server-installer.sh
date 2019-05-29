@@ -90,7 +90,7 @@ clear
        ;; 
        3) echo "Opening the server.properties file..."
        echo ""
-       nano ~/snap/mc-server-installer/current/server.properties
+       nano server.properties
        echo ""
        ;;
        4) echo "Starting server with 2GB of RAM..."
