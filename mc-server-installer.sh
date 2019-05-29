@@ -62,13 +62,14 @@ echo "Select from the following options: "
 echo ""
 echo "1) Download latest server.jar"
 echo "2) Agree to the EULA"
-echo "3) Run MC server with max 2GB of RAM"
-echo "4) Run MC server with max 4GB of RAM"
-echo "5) Run MC server with max 6GB of RAM"
-echo "6) Run MC server with max 8GB of RAM"
-echo "7) Run MC server with max 16GB of RAM"
-echo "8) View README"
-echo "9) Quit"
+echo "3) Edit the server.properties file"
+echo "4) Run MC server with max 2GB of RAM"
+echo "5) Run MC server with max 4GB of RAM"
+echo "6) Run MC server with max 6GB of RAM"
+echo "7) Run MC server with max 8GB of RAM"
+echo "8) Run MC server with max 16GB of RAM"
+echo "9) View README"
+echo "10) Quit"
 echo "" 
 read -p "Choice: " answer 
 clear
@@ -84,27 +85,32 @@ clear
        echo ""
        sed -ie s/false/true/g eula.txt
        ;; 
-       3) echo "Starting server with 2GB of RAM..."
+       3) echo "Opening the server.properties file..."
+       echo ""
+       nano ~/snap/mc-server-installer/current/server.properties
+       echo ""
+       ;;
+       4) echo "Starting server with 2GB of RAM..."
        echo ""
        java -Xmx2048M -Xmx1024M -jar server.jar nogui
        ;; 
-       4) echo "Starting server with 4GB of RAM..."
+       5) echo "Starting server with 4GB of RAM..."
        echo ""
        java -Xmx4096M -Xms1024M -jar server.jar nogui
        ;;
-       5) echo "Starting server with 6GB of RAM..."
+       6) echo "Starting server with 6GB of RAM..."
        echo ""
        java -Xmx6144M -Xms1024M -jar server.jar nogui       
        ;;
-       6) echo "Starting server with 8GB of RAM..."
+       7) echo "Starting server with 8GB of RAM..."
        echo ""
        java -Xmx9192M -Xms1024M -jar server.jar nogui       
        ;;
-       7) echo "Starting server with 16GB of RAM..."
+       8) echo "Starting server with 16GB of RAM..."
        echo ""
        java -Xmx16384 -Xms1024M -jar server.jar nogui
        ;;
-       8) echo ""
+       9) echo ""
           echo "MC-SERVER-INSTALLER is not an officially"
           echo "supported or licensed application of "
           echo "Mojang."
@@ -132,7 +138,7 @@ clear
           echo "github.com/kz6fittycent/mc-server-installer"
           echo ""
           ;;
-       9) break ;; 
+       10) break ;; 
    esac  
    echo "press RETURN for menu" 
    read key 
