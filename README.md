@@ -10,20 +10,23 @@ The first time you run the installer, you'll need to download the .jar file (i.e
 to start the server (e.g. select option #3). Once selected, the server will attempt to run and fail, stating that
 you need to agree to the EULA.
 
-## NO. THIS WON'T BE CHANGED! 
-##   BECAUSE LEGAL STUFF
+### NO. THIS WON'T BE CHANGED! BECAUSE LEGAL STUFF...
  
  You may then select option #2 and proceed with choosing any of the other options or setting up your server's 
  configuration, which is located in:
  ```
- ~/snap/mc-server-installer/current"
+ ~/snap/mc-server-installer/current
  ```
  This snap package was built from scratch with an MIT License, by kz6fittycent:
  
  https://github.com/kz6fittycent/mc-server-installer
+ 
+------------------------------------------------------------------
 
 # To install:
 `sudo snap install mc-server-installer`
+
+-------------------------------------------------------------------
 
 # SAMPLE
 
