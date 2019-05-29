@@ -77,13 +77,16 @@ clear
        1) echo "Downloading the latest server.jar..."
        echo "" 
        curl -so server.jar $JAR_URL 
-       echo ""
-       echo "Setting things up..."
-       java -Xmx2048M -Xmx1024M -jar server.jar nogui
        ;; 
-       2) echo "Agreeing to EULA..."
+       2) echo "Setting things up first..."
+       echo ""
+       echo "Agreeing to the EULA..."
+       java -Xmx2048M -Xmx1024M -jar server.jar nogui       
        echo ""
        sed -ie s/false/true/g eula.txt
+       echo ""
+       echo "Done!"
+       echo ""
        ;; 
        3) echo "Opening the server.properties file..."
        echo ""
@@ -117,11 +120,10 @@ clear
           echo ""
           echo "The first time you run the installer,"
           echo "you'll need to download the .jar file"
-          echo "(i.e. select option #1) and "
-          echo "MC-SERVER-INSTALLER will perform a first"
-          echo "run."
-          echo "Now you may select option #2 to agree to" 
-          echo "the EULA."
+          echo "(i.e. select option #1). 
+          echo "Now you may select option 2 to agree to" 
+          echo "the EULA. You will never have to do this"
+          echo "again, unless you remove the snap."
           echo ""
           echo "       NO. THIS WON'T BE CHANGED!" 
           echo "          BECAUSE LEGAL STUFF"
@@ -131,6 +133,10 @@ clear
           echo "setting up your server's configuration"
           echo "which is located in:"
           echo "~/snap/mc-server-installer/current"
+          echo ""
+          echo "Anytime you need to update the server.jar,"
+          echo "just select option 1 again. No need to agree"
+          echo "to the EULA"
           echo ""
           echo "This snap package was built from scratch"
           echo "with an MIT License, by kz6fittycent:"
