@@ -33,7 +33,7 @@ echo " Welcome to MC-SERVER-INSTALLER"
 echo ""
 echo "             v1.0"
 echo ""
-echo "         MIT LICENSE"
+echo "          MIT LICENSE"
 echo ""
 echo "--------------------------------"
 sleep 2s
@@ -47,7 +47,7 @@ echo "and attempt to start the server,"
 echo "before agreeing to the EULA;"
 echo "            choice #2"
 echo ""
-sleep 4s
+sleep 5s
 
 while [ answer != "0" ]  
 do 
