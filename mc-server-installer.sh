@@ -120,7 +120,7 @@ clear
           echo ""
           echo "The first time you run the installer,"
           echo "you'll need to download the .jar file"
-          echo "(i.e. select option #1). 
+          echo "(i.e. select option #1)." 
           echo "Now you may select option 2 to agree to" 
           echo "the EULA. You will never have to do this"
           echo "again, unless you remove the snap."
