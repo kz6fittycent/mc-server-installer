@@ -1,25 +1,27 @@
 [![Snap Status](https://build.snapcraft.io/badge/kz6fittycent/mc-server-installer.svg)](https://build.snapcraft.io/user/kz6fittycent/mc-server-installer)
 
-# mc-server-installer
-Minecraft Server Installer
+# MC-Server-Installer
+A Minecraft server installer and configuration tool
 
 # README
+
 MC-SERVER-INSTALLER is not an officially supported or licensed application of Mojang.
 
-The first time you run the installer, you'll need to download the .jar file (i.e. select option #1) and attempt
-to start the server (e.g. select option #3). Once selected, the server will attempt to run and fail, stating that
-you need to agree to the EULA.
+MC-SERVER-INSTALLER will perform a first run. Now you may select option #2 to agree to 
+the EULA.
 
 ### NO. THIS WON'T BE CHANGED! BECAUSE LEGAL STUFF...
- 
- You may then select option #2 and proceed with choosing any of the other options or setting up your server's 
- configuration, which is located in:
+
+After selecting option #2, you can proceed with choosing any of the other options or
+setting up your server's configuration, which is located in:
+
  ```
  ~/snap/mc-server-installer/current
  ```
- This snap package was built from scratch with an MIT License, by kz6fittycent:
+
+This snap package was built from scratch with an MIT License, by kz6fittycent:
  
- https://github.com/kz6fittycent/mc-server-installer
+https://github.com/kz6fittycent/mc-server-installer
  
 ------------------------------------------------------------------
 
@@ -28,14 +30,14 @@ you need to agree to the EULA.
 
 -------------------------------------------------------------------
 
-# SAMPLE
+# Sample
 
 ```
 --------------------------------
 
  Welcome to MC-SERVER-INSTALLER
 
-             v1.0
+             v1.1
 
          MIT LICENSE
 
