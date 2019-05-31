@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: '1.3'
+version: '2.0'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file and allows you to start your server with the amount of RAM you choose. 
