@@ -31,7 +31,7 @@ echo "--------------------------------"
 echo ""
 echo " Welcome to MC-SERVER-INSTALLER"
 echo ""
-echo "             v2.0"
+echo "             v2.1"
 echo ""
 echo "          MIT LICENSE"
 echo ""
@@ -108,7 +108,7 @@ clear
        ;;
        7) echo "Starting server with 8GB of RAM..."
        echo ""
-       java -Xmx9192M -Xms1024M -jar server.jar nogui       
+       java -Xmx8192M -Xms1024M -jar server.jar nogui       
        ;;
        8) echo "Starting server with 16GB of RAM..."
        echo ""
