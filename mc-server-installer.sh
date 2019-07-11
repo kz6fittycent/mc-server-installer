@@ -112,7 +112,7 @@ clear
        ;;
        8) echo "Starting server with 16GB of RAM..."
        echo ""
-       java -Xmx16384 -Xms1024M -jar server.jar nogui
+       java -Xmx16384M -Xms1024M -jar server.jar nogui
        ;;
        9) echo ""
           echo "MC-SERVER-INSTALLER is not an officially"
