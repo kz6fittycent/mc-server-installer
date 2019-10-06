@@ -1,5 +1,6 @@
 [![Snap Status](https://build.snapcraft.io/badge/kz6fittycent/mc-server-installer.svg)](https://build.snapcraft.io/user/kz6fittycent/mc-server-installer)
 
+
 # MC-Server-Installer
 A Minecraft server installer and configuration tool
 
