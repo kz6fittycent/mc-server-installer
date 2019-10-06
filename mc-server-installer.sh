@@ -25,15 +25,12 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
 
+clear
 
 # START THE INSTALLER
 echo "--------------------------------"
 echo ""
 echo " Welcome to MC-SERVER-INSTALLER"
-echo ""
-echo "             v4.0"
-echo ""
-echo "          MIT LICENSE"
 echo ""
 echo "--------------------------------"
 sleep 2s
@@ -46,7 +43,7 @@ echo "YOU MUST AGREE TO THE EULA PRIOR"
 echo "    TO RUNNING THE SERVER"
 echo "       FIRST TIME ONLY"
 echo ""
-sleep 5s
+sleep 3s
 
 while [ answer != "0" ]  
 do 
