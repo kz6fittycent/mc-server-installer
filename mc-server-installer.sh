@@ -79,7 +79,7 @@ clear
        2) echo "Setting things up first..."
        echo ""
        echo "Agreeing to the EULA..."
-       java -Xmx2048M -Xmx1024M -jar server.jar nogui       
+       java -Xmx2048M -Xms1024M -jar server.jar nogui       
        echo ""
        sed -ie s/false/true/g eula.txt
        echo ""
@@ -93,7 +93,7 @@ clear
        ;;
        4) echo "Starting server with 2GB of RAM..."
        echo ""
-       java -Xmx2048M -Xmx1024M -jar server.jar nogui
+       java -Xmx2048M -Xms1024M -jar server.jar nogui
        ;; 
        5) echo "Starting server with 4GB of RAM..."
        echo ""
