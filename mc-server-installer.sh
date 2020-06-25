@@ -25,8 +25,14 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
 
+# Get the launch jar configuration
+if [ -f ./launchjar ]; then
+    launchjar=`cat ./launchjar.txt`
+else
+    echo "server.jar" > launchjar.txt
+    launchjar=`cat ./launchjar.txt`
+fi
 clear
-
 # START THE INSTALLER
 echo "--------------------------------"
 echo ""
@@ -47,14 +53,16 @@ sleep 3s
 
 while [ answer != "0" ]  
 do 
-clear 
 
+clear 
 echo "-------------------------------------"
 echo ""
 echo "     MINECRAFT SERVER INSTALLER"
 echo "               MENU              "
 echo ""
 echo "-------------------------------------"
+echo "Launching from: "
+echo $launchjar
 echo ""
 echo "Select from the following options: " 
 echo ""
@@ -66,8 +74,9 @@ echo "5) Run MC server with max 4GB of RAM"
 echo "6) Run MC server with max 6GB of RAM"
 echo "7) Run MC server with max 8GB of RAM"
 echo "8) Run MC server with max 16GB of RAM"
-echo "9) View README"
-echo "10) Quit"
+echo "9) Change launch jar"
+echo "10) View README"
+echo "11) Quit"
 echo "" 
 read -p "Choice: " answer 
 clear
@@ -79,7 +88,7 @@ clear
        2) echo "Setting things up first..."
        echo ""
        echo "Agreeing to the EULA..."
-       java -Xmx2048M -Xms1024M -jar server.jar nogui       
+       java -Xmx2048M -Xms1024M -jar $launchJar nogui       
        echo ""
        sed -ie s/false/true/g eula.txt
        echo ""
@@ -93,25 +102,29 @@ clear
        ;;
        4) echo "Starting server with 2GB of RAM..."
        echo ""
-       java -Xmx2048M -Xms1024M -jar server.jar nogui
+       java -Xmx2048M -Xms1024M -jar $launchJar nogui
        ;; 
        5) echo "Starting server with 4GB of RAM..."
        echo ""
-       java -Xmx4096M -Xms1024M -jar server.jar nogui
+       java -Xmx4096M -Xms1024M -jar $launchJar nogui
        ;;
        6) echo "Starting server with 6GB of RAM..."
        echo ""
-       java -Xmx6144M -Xms1024M -jar server.jar nogui       
+       java -Xmx6144M -Xms1024M -jar $launchJar nogui       
        ;;
        7) echo "Starting server with 8GB of RAM..."
        echo ""
-       java -Xmx8192M -Xms1024M -jar server.jar nogui       
+       java -Xmx8192M -Xms1024M -jar $launchJar nogui       
        ;;
        8) echo "Starting server with 16GB of RAM..."
        echo ""
-       java -Xmx16384M -Xms1024M -jar server.jar nogui
+       java -Xmx16384M -Xms1024M -jar $launchJar nogui
        ;;
-       9) echo ""
+       9) read -p "Launch jar (server.jar): " launchJar
+       echo $launchJar > ./launchjar.txt
+       launchjar=`cat ./launchjar.txt`
+       ;;
+       10) echo ""
           echo "MC-SERVER-INSTALLER is not an officially"
           echo "supported or licensed application of "
           echo "Mojang."
@@ -142,7 +155,7 @@ clear
           echo "github.com/kz6fittycent/mc-server-installer"
           echo ""
           ;;
-       10) break ;; 
+       11) break ;; 
    esac  
    echo "press RETURN for menu" 
    read key 
