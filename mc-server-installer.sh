@@ -23,7 +23,7 @@ JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.8.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
-#cd $SNAP_USER_DATA
+cd $SNAP_USER_DATA
 
 # Get the launch jar configuration
 if [ -f ./launchjar.txt ]; then
