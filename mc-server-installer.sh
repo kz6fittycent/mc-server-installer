@@ -23,14 +23,14 @@ JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.8.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
-cd $SNAP_USER_DATA
+#cd $SNAP_USER_DATA
 
 # Get the launch jar configuration
-if [ -f ./launchjar ]; then
-    launchjar=`cat ./launchjar.txt`
+if [ -f ./launchjar.txt ]; then
+    launchJar=`cat ./launchjar.txt`
 else
     echo "server.jar" > launchjar.txt
-    launchjar=`cat ./launchjar.txt`
+    launchJar=`cat ./launchjar.txt`
 fi
 clear
 # START THE INSTALLER
@@ -62,7 +62,7 @@ echo "               MENU              "
 echo ""
 echo "-------------------------------------"
 echo "Launching from: "
-echo $launchjar
+echo $launchJar
 echo ""
 echo "Select from the following options: " 
 echo ""
@@ -87,8 +87,8 @@ clear
        ;; 
        2) echo "Setting things up first..."
        echo ""
+       java -Xmx2048M -Xms1024M -jar "$launchJar" nogui    
        echo "Agreeing to the EULA..."
-       java -Xmx2048M -Xms1024M -jar $launchJar nogui       
        echo ""
        sed -ie s/false/true/g eula.txt
        echo ""
@@ -101,24 +101,24 @@ clear
        echo ""
        ;;
        4) echo "Starting server with 2GB of RAM..."
-       echo ""
-       java -Xmx2048M -Xms1024M -jar $launchJar nogui
+       echo $launchJar
+       java -Xmx2048M -Xms1024M -jar "$launchJar" nogui
        ;; 
        5) echo "Starting server with 4GB of RAM..."
        echo ""
-       java -Xmx4096M -Xms1024M -jar $launchJar nogui
+       java -Xmx4096M -Xms1024M -jar "$launchJar" nogui
        ;;
        6) echo "Starting server with 6GB of RAM..."
        echo ""
-       java -Xmx6144M -Xms1024M -jar $launchJar nogui       
+       java -Xmx6144M -Xms1024M -jar "$launchJar" nogui
        ;;
        7) echo "Starting server with 8GB of RAM..."
        echo ""
-       java -Xmx8192M -Xms1024M -jar $launchJar nogui       
+       java -Xmx8192M -Xms1024M -jar "$launchJar" nogui
        ;;
        8) echo "Starting server with 16GB of RAM..."
        echo ""
-       java -Xmx16384M -Xms1024M -jar $launchJar nogui
+       java -Xmx16384M -Xms1024M -jar "$launchJar" nogui
        ;;
        9) read -p "Launch jar (server.jar): " launchJar
        echo $launchJar > ./launchjar.txt
