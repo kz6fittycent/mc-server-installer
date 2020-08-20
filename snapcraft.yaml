@@ -40,5 +40,3 @@ parts:
   publish:
     plugin: dump
     source: .
-    organize:
-      ./mc-server-installer.sh: mc-server-installer.sh
