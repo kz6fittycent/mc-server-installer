@@ -28,7 +28,7 @@ parts:
       - sed
       - jq
       - nano
-
+      - sh
       
     stage-packages:
       - openjdk-8-jre-headless
@@ -36,6 +36,7 @@ parts:
       - sed
       - jq
       - nano
+      - sh
 
   publish:
     plugin: dump
