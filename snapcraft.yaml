@@ -4,6 +4,8 @@ summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file and allows you to start your server with the amount of RAM you choose. 
 
+license: MIT
+
 base: core18
 grade: stable
 confinement: strict
