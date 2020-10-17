@@ -67,7 +67,8 @@ echo "6) Run MC server with max 6GB of RAM"
 echo "7) Run MC server with max 8GB of RAM"
 echo "8) Run MC server with max 16GB of RAM"
 echo "9) View README"
-echo "10) Quit"
+echo "10) Back up your world"
+echo "11) Quit"
 echo "" 
 read -p "Choice: " answer 
 clear
@@ -142,7 +143,15 @@ clear
           echo "github.com/kz6fittycent/mc-server-installer"
           echo ""
           ;;
-       10) break ;; 
+       10) echo ""
+           echo "Backing everything up..."
+           echo ""
+           sleep .5
+           tar -cvzf /home/$USER/mc-server-installer_backup.tar.gz /home/$USER/snap/mc-server-installer/current/*
+           echo ""
+           echo "Your backup is now located in /home/$USER"
+           ;;
+       11) break ;; 
    esac  
    echo "press RETURN for menu" 
    read key 
