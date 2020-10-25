@@ -1,14 +1,21 @@
 name: mc-server-installer
-version: '7.2'
+version: '7.3'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file and allows you to start your server with the amount of RAM you choose. 
 
 license: MIT
 
-base: core18
+base: core20
 grade: stable
 confinement: strict
+
+architectures:
+  - build-on: amd64
+  - build-on: arm64
+  - build-on: armhf
+  - build-on: ppc64el
+  - build-on: s390x
 
 apps:
   mc-server-installer:
