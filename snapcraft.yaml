@@ -46,7 +46,7 @@ parts:
       - jq
       - nano
       - tar
-      
+    
     stage-packages:
       - openjdk-8-jre-headless
       - curl
