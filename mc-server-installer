@@ -68,7 +68,8 @@ echo "7) Run MC server with max 8GB of RAM"
 echo "8) Run MC server with max 16GB of RAM"
 echo "9) View README"
 echo "10) Back up your world"
-echo "11) Quit"
+echo "11) Run custom RAM settings"
+echo "12) Quit"
 echo "" 
 read -p "Choice: " answer 
 clear
@@ -80,7 +81,7 @@ clear
        2) echo "Setting things up first..."
        echo ""
        echo "Agreeing to the EULA..."
-       java -Xmx2048M -Xms1024M -jar server.jar nogui       
+       java -Xmx2048M -Xms128M -jar server.jar nogui       
        echo ""
        sed -ie s/false/true/g eula.txt
        echo ""
@@ -94,23 +95,23 @@ clear
        ;;
        4) echo "Starting server with 2GB of RAM..."
        echo ""
-       java -Xmx2048M -Xms1024M -jar server.jar nogui
+       java -Xmx2048M -Xms128M -jar server.jar nogui
        ;; 
        5) echo "Starting server with 4GB of RAM..."
        echo ""
-       java -Xmx4096M -Xms1024M -jar server.jar nogui
+       java -Xmx4096M -Xms128M -jar server.jar nogui
        ;;
        6) echo "Starting server with 6GB of RAM..."
        echo ""
-       java -Xmx6144M -Xms1024M -jar server.jar nogui       
+       java -Xmx6144M -Xms128M -jar server.jar nogui       
        ;;
        7) echo "Starting server with 8GB of RAM..."
        echo ""
-       java -Xmx8192M -Xms1024M -jar server.jar nogui       
+       java -Xmx8192M -Xms128M -jar server.jar nogui       
        ;;
        8) echo "Starting server with 16GB of RAM..."
        echo ""
-       java -Xmx16384M -Xms1024M -jar server.jar nogui
+       java -Xmx16384M -Xms128M -jar server.jar nogui
        ;;
        9) echo ""
           echo "MC-SERVER-INSTALLER is not an officially"
@@ -151,7 +152,29 @@ clear
            echo ""
            echo "Your backup is now located in /home/$USER"
            ;;
-       11) break ;; 
+       11) echo ""
+           echo "You MUST follow the format outlined here:"
+           echo "https://minecraft.gamepedia.com/Server/Requirements"
+           echo ""
+           echo "(e.g. 4096M). You only need to enter the value, not"
+           echo "the full java command. So, just 4096M or 8192M as a"
+           echo "value, or whatever you want your MAX value to be." 
+           echo "If you see errors, just double-check your entry"
+           echo ""
+           echo "ONLY MAX RAM SETTINGS ARE APPLIED!"
+           echo ""
+           echo "Minimum REQUIRED RAM is 1024M!"
+           echo ""
+           sleep 3
+           
+           read -p "Enter your MAX RAM settings: " RAM
+           echo ""
+           echo "Running your server with MAX ${RAM}..."
+           echo ""
+           sleep .5
+           java -Xmx${RAM} -Xms128M -jar server.jar nogui
+           ;;           
+       12) break ;; 
    esac  
    echo "press RETURN for menu" 
    read key 

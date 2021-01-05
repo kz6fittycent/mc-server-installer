@@ -1,8 +1,16 @@
 name: mc-server-installer
-version: '7.3'
+version: '8.0'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
-    A Minecraft Server installer and configuration snap that downloads the latest .jar file and allows you to start your server with the amount of RAM you choose. 
+    A Minecraft Server installer and configuration snap that downloads the latest .jar file 
+    and allows you to start your server with the amount of RAM you choose. 
+    
+    Admins may now run custom MAX RAM settings! Minimum RAM requirements are 1024M, so please
+    keep this in mind. Additionally, -Xmn values have been reduced to 128M to keep with current
+    guidance. See: https://minecraft.gamepedia.com/Server/Requirements 
+    
+    You can also backup your entire server with option 10 in the menu. They are pushed to
+    /home/user/ so that uninstalling the snap won't affect your backups. 
 
 license: MIT
 
