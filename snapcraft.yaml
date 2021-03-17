@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: '8.0'
+version: '8.1'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file 
@@ -17,6 +17,7 @@ license: MIT
 base: core20
 grade: stable
 confinement: strict
+compression: lzo
 
 architectures:
   - build-on: amd64
