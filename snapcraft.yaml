@@ -55,6 +55,10 @@ parts:
       - jq
       - nano
       - tar
+      
+    prime:
+        - -usr/lib/jvm/java-*/lib/security/cacerts
+        - -usr/lib/jvm/java-*/jre/lib/security/cacerts      
 
   publish:
     plugin: dump
