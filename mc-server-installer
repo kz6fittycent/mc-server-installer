@@ -81,7 +81,7 @@ clear
        2) echo "Setting things up first..."
        echo ""
        echo "Agreeing to the EULA..."
-       nohup java -Xmx2048M -Xms128M -jar server.jar nogui > /dev/null 2>&1&    
+       java -Xmx2048M -Xms128M -jar server.jar nogui    
        echo ""
        sed -ie s/false/true/g eula.txt
        echo ""
