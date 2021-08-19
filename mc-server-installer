@@ -20,7 +20,7 @@ MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manife
 JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 
 # java paths
-export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.8.0-openjdk-$SNAP_ARCH
+export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.16.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
@@ -33,9 +33,8 @@ echo ""
 echo " Welcome to MC-SERVER-INSTALLER"
 echo ""
 echo "--------------------------------"
-sleep 2s
+sleep 1.0
 echo "
-
 "
 echo "              NOTE"
 echo "            --------"
@@ -43,7 +42,7 @@ echo "YOU MUST AGREE TO THE EULA PRIOR"
 echo "    TO RUNNING THE SERVER"
 echo "       FIRST TIME ONLY"
 echo ""
-sleep 3s
+sleep 1.5
 
 while [ answer != "0" ]  
 do 
@@ -81,7 +80,7 @@ clear
        2) echo "Setting things up first..."
        echo ""
        echo "Agreeing to the EULA..."
-       java -Xmx2048M -Xms128M -jar server.jar nogui       
+       nohup java -Xmx2048M -Xms128M -jar server.jar nogui > /dev/null 2>&1&    
        echo ""
        sed -ie s/false/true/g eula.txt
        echo ""
@@ -151,6 +150,8 @@ clear
            tar -cvzf /home/$USER/mc-server-installer_backup.tar.gz /home/$USER/snap/mc-server-installer/current/*
            echo ""
            echo "Your backup is now located in /home/$USER"
+           echo ""
+           sleep 1.5
            ;;
        11) echo ""
            echo "You MUST follow the format outlined here:"
