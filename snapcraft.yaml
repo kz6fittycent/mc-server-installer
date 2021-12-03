@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: '8.1'
+version: '9.2'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file 
@@ -11,7 +11,6 @@ description: |
     
     You can also backup your entire server with option 10 in the menu. They are pushed to
     /home/user/ so that uninstalling the snap won't affect your backups. 
-
 license: MIT
 
 base: core20
@@ -19,12 +18,11 @@ grade: stable
 confinement: strict
 compression: lzo
 
-#architectures:
-#  - build-on: amd64
-#  - build-on: arm64
-#  - build-on: armhf
-#  - build-on: ppc64el
-#  - build-on: s390x
+architectures:
+  - build-on: amd64
+  - build-on: armhf
+  - build-on: ppc64el
+  - build-on: s390x
 
 apps:
   mc-server-installer:
@@ -41,7 +39,7 @@ parts:
     plugin: nil
     
     build-packages:
-      - openjdk-8-jre-headless
+      - openjdk-17-jre-headless
       - curl
       - sed
       - jq
@@ -49,17 +47,13 @@ parts:
       - tar
     
     stage-packages:
-      - openjdk-8-jre-headless
+      - openjdk-17-jre-headless
       - curl
       - sed
       - jq
       - nano
       - tar
       
-    prime:
-        - -usr/lib/jvm/java-*/lib/security/cacerts
-        - -usr/lib/jvm/java-*/jre/lib/security/cacerts      
-
   publish:
     plugin: dump
     source: .
