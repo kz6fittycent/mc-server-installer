@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: '9.1'
+version: '9.2'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file 
