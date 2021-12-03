@@ -40,7 +40,7 @@ parts:
     plugin: nil
     
     build-packages:
-      - openjdk-16-jre-headless
+      - openjdk-17-jre-headless
       - curl
       - sed
       - jq
@@ -48,7 +48,7 @@ parts:
       - tar
     
     stage-packages:
-      - openjdk-16-jre-headless
+      - openjdk-17-jre-headless
       - curl
       - sed
       - jq
