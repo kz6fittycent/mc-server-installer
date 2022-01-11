@@ -23,6 +23,12 @@ JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.17.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
+# Colors and font characteristics
+RED="\e[0;91m"
+BLUE="\e[0;94m"
+BOLD="\e[1m"
+RESET="\e[0m"
+
 cd $SNAP_USER_DATA
 
 clear
@@ -30,18 +36,18 @@ clear
 # START THE INSTALLER
 echo "--------------------------------"
 echo ""
-echo " Welcome to MC-SERVER-INSTALLER"
+echo " ${BOLD}Welcome to MC-SERVER-INSTALLER${RESET}"
 echo ""
 echo "--------------------------------"
 sleep 1.0
 echo "
 
 "
-echo "              NOTE"
+echo "              ${BOLD}NOTE${RESET}"
 echo "            --------"
-echo "YOU MUST AGREE TO THE EULA PRIOR"
+echo "${RED}YOU MUST AGREE TO THE EULA PRIOR"
 echo "    TO RUNNING THE SERVER"
-echo "       FIRST TIME ONLY"
+echo "       FIRST TIME ONLY${RESET}"
 echo ""
 sleep 1.5
 
@@ -129,14 +135,14 @@ clear
           echo "the EULA. You will never have to do this"
           echo "again, unless you remove the snap."
           echo ""
-          echo "       NO. THIS WON'T BE CHANGED!" 
-          echo "          BECAUSE LEGAL STUFF"
+          echo "       ${BOLD}${RED}NO. THIS WON'T BE CHANGED!" 
+          echo "          BECAUSE LEGAL STUFF${RESET}"
           echo ""
           echo "After selecting option #2, you can proceed"
           echo "with choosing any of the other options or"
           echo "setting up your server's configuration"
           echo "which is located in:"
-          echo "~/snap/mc-server-installer/current"
+          echo "${BLUE}~/snap/mc-server-installer/current${RESET}"
           echo ""
           echo "Anytime you need to update the server.jar,"
           echo "just select option 1 again. No need to agree"
@@ -145,7 +151,7 @@ clear
           echo "This snap package was built from scratch"
           echo "with an MIT License, by kz6fittycent:"
           echo ""
-          echo "github.com/kz6fittycent/mc-server-installer"
+          echo "${BLUE}github.com/kz6fittycent/mc-server-installer${RESET}"
           echo ""
           ;;
        10) echo ""
@@ -154,13 +160,13 @@ clear
            sleep .5
            tar -cvzf /home/$USER/mc-server-installer_backup.tar.gz /home/$USER/snap/mc-server-installer/current/*
            echo ""
-           echo "Your backup is now located in /home/$USER"
+           echo "${BOLD}${BLUE}Your backup is now located in /home/$USER${RESET}"
            echo ""
            sleep 1.5
            ;;
        11) echo ""
-           echo "You MUST follow the format outlined here:"
-           echo "https://minecraft.gamepedia.com/Server/Requirements"
+           echo "You ${BOLD}MUST${RESET} follow the format outlined here:"
+           echo "${BLUE}https://minecraft.gamepedia.com/Server/Requirements${RESET}"
            echo ""
            echo "(e.g. 4096M). You only need to enter the value, not"
            echo "the full java command. So, just 4096M or 8192M as a"
