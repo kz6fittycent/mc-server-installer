@@ -57,4 +57,4 @@ parts:
       
   publish:
     plugin: dump
-    source: .
+    source: scripts
