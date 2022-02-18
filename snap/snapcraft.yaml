@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: '9.3'
+version: '10.0'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file 
@@ -21,10 +21,7 @@ compression: lzo
 
 architectures:
   - build-on: amd64
-  - build-on: armhf
-  - build-on: arm64
-  - build-on: ppc64el
-  - build-on: s390x
+    run-on: [amd64, armhf, arm64, ppc64el, s390x]
 
 apps:
   mc-server-installer:
