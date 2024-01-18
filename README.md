@@ -1,9 +1,5 @@
 [![mc-server-installer](https://snapcraft.io//mc-server-installer/badge.svg)](https://snapcraft.io/mc-server-installer)
 
-# SPECIAL NOTE ABOUT LOG4J:
-`mc-server-installer` can download the latest patch `1.18.1` by choosing OPTION #1 from the main menu. 
-Go to this link to learn more: https://www.minecraft.net/en-us/article/important-message--security-vulnerability-java-edition?ref=launcher
-
 # MC-Server-Installer
 A Minecraft server installer and configuration tool
 
