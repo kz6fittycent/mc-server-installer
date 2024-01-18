@@ -1,0 +1,32 @@
+name: Periodic Builds
+on:
+  # Runs at 10:00 UTC every 1st day of every month
+  schedule:
+    - cron:  '0 10 1 * *'
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [16.x]    
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: snapcore/action-build@v1
+        id: build
+
+      - uses: diddlesnaps/snapcraft-review-action@v1
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          isClassic: 'false'
+          # Plugs and Slots declarations to override default denial (requires store assertion to publish)
+          # plugs: ./plug-declaration.json
+          # slots: ./slot-declaration.json  
