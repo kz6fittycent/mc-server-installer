@@ -35,6 +35,15 @@ parts:
     source: https://github.com/kz6fittycent/mc-server-installer
     source-type: git
     plugin: nil
+    
+    build-packages:
+      - openjdk-21-jre-headless
+      - curl
+      - sed
+      - jq
+      - nano
+      - tar
+      
     stage-packages:
       - openjdk-21-jre-headless
       - curl
