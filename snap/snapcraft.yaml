@@ -24,7 +24,7 @@ architectures:
 
 package-repositories:
  - type:
-   ppa:openjdk-r/ppa
+   ppa: openjdk-r/ppa
    
 apps:
   mc-server-installer:
