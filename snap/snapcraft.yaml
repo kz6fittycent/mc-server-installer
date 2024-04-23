@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: '12.0'
+version: '12.1'
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file 
@@ -35,17 +35,8 @@ parts:
     source: https://github.com/kz6fittycent/mc-server-installer
     source-type: git
     plugin: nil
-
-    build-packages:
-      - openjdk-17-jre-headless
-      - curl
-      - sed
-      - jq
-      - nano
-      - tar
-         
     stage-packages:
-      - openjdk-17-jre-headless
+      - openjdk-21-jre-headless
       - curl
       - sed
       - jq
