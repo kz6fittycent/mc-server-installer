@@ -22,6 +22,10 @@ compression: lzo
 architectures:
   - build-on: amd64
 
+package-repositories:
+ - type:
+   ppa:openjdk-r/ppa
+   
 apps:
   mc-server-installer:
     command: mc-server-installer
