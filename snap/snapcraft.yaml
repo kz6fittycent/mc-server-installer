@@ -23,7 +23,7 @@ architectures:
   - build-on: amd64
 
 package-repositories:
- - type:
+ - type: apt
    ppa: openjdk-r/ppa
    
 apps:
