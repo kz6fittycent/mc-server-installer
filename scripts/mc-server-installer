@@ -20,7 +20,7 @@ MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manife
 JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 
 # java paths
-export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.17.0-openjdk-$SNAP_ARCH
+export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.21.0-openjdk-$SNAP_ARCH
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 # Colors and font characteristics
