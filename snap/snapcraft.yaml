@@ -55,7 +55,9 @@ parts:
       - jq
       - nano
       - tar
-      
+  prime:
+    - -java-common
+    
   publish:
     plugin: dump
     source: scripts
