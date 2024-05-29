@@ -75,7 +75,8 @@ echo "8) Run MC server with max 16GB of RAM"
 echo "9) View README"
 echo "10) Back up your world"
 echo "11) Run custom RAM settings"
-echo "12) Quit"
+echo "12) Run custom jar file and RAM settings"
+echo "13) Quit"
 echo "" 
 read -p "Choice: " answer 
 clear
@@ -185,8 +186,41 @@ clear
            echo ""
            sleep .5
            java -Xmx${RAM} -Xms128M -XX:+UseG1GC -jar server.jar nogui
-           ;;           
-       12) break ;; 
+           ;;  
+       12) echo ""
+           echo "You ${BOLD}MUST${RESET} provide the full path to your jar file!"
+           echo "e.g. /home/$USER/custom_jar.jar"
+           echo ""  
+           sleep 3           
+           read -p "Enter the location of your custom jar file (e.g. /home/$USER/server.jar): " JAR
+           echo ""
+
+           sleep .5
+           echo ""
+           echo "Set MAX RAM Values"
+           echo ""
+           echo "You ${BOLD}MUST${RESET} follow the format outlined here:"
+           echo "${BLUE}https://minecraft.gamepedia.com/Server/Requirements${RESET}"
+           echo ""
+           echo "(e.g. 4096M). You only need to enter the value, not"
+           echo "the full java command. So, just 4096M or 8192M as a"
+           echo "value, or whatever you want your MAX value to be." 
+           echo "If you see errors, just double-check your entry"
+           echo ""
+           echo "ONLY MAX RAM SETTINGS ARE APPLIED!"
+           echo ""
+           echo "Minimum REQUIRED MAX RAM entry is 1024M!"
+           echo ""
+           sleep 3
+           
+           read -p "Enter your MAX RAM settings: " RAM2
+           echo ""
+           echo "Running your custom MC server.jar with MAX ${RAM}..."
+           echo ""
+           sleep .5
+           java -Xmx${RAM2} -Xms128M -XX:+UseG1GC -jar ${JAR} nogui
+           ;;            
+       13) break ;; 
    esac  
    echo "press RETURN for menu" 
    read key 
