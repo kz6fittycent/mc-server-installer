@@ -55,16 +55,18 @@ while [ answer != "0" ]
 do 
 clear 
 
-echo "-------------------------------------"
+echo "------------------------------------------"
 echo ""
-echo "     MINECRAFT SERVER INSTALLER"
-echo "               MENU              "
+echo "         MINECRAFT SERVER INSTALLER"
+echo "                   MENU              "
 echo ""
-echo "-------------------------------------"
+echo "------------------------------------------"
+echo ""
+echo "ATTENTION: Latest available version: ${LATEST}"
 echo ""
 echo "Select from the following options: " 
 echo ""
-echo "1) Download latest (${LATEST}) server.jar"
+echo "1) Download latest (v${LATEST}) server.jar"
 echo "2) Agree to the EULA"
 echo "3) Edit the server.properties file"
 echo "4) Run MC server with max 2GB of RAM"
@@ -81,7 +83,7 @@ echo ""
 read -p "Choice: " answer 
 clear
     case $answer in 
-       1) echo "Downloading ${LATEST} server.jar..."
+       1) echo "Downloading v${LATEST} server.jar..."
        echo "" 
        curl -so server.jar $JAR_URL 
        ;; 
