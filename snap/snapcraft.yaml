@@ -12,6 +12,11 @@ description: |
     You can also backup your entire server with option 10 in the menu. They are pushed to
     /home/user/ so that uninstalling the snap won't affect your backups. 
 
+website: https://minecraft.net
+contact: https://github.com/kz6fittycent/mc-server-installer/issues
+issues: https://github.com/kz6fittycent/mc-server-installer/issues
+source-code: https://github.com/kz6fittycent/mc-server-installer
+
 license: MIT
 base: core24
 grade: stable
