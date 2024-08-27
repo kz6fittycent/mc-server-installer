@@ -1,5 +1,5 @@
 name: mc-server-installer
-version: 13.0
+version: 13.1
 summary: Minecraft Server Downloader and Installer/Configuration Tool
 description: |
     A Minecraft Server installer and configuration snap that downloads the latest .jar file 
@@ -13,14 +13,14 @@ description: |
     /home/user/ so that uninstalling the snap won't affect your backups. 
 
 license: MIT
-
-base: core22
+base: core24
 grade: stable
 confinement: strict
 compression: lzo
-
-architectures:
-  - build-on: amd64
+platforms:
+  amd64:
+    build-on: [amd64]
+    build-for: [amd64]
 
 apps:
   mc-server-installer:
@@ -36,9 +36,9 @@ parts:
     source-type: git
     plugin: nil
     
-#    override-pull: |
-#     snapcraftctl pull
-#     snapcraftctl set-version "$(git describe --tags | sed 's/^v//' | cut -d "-" -f1)"
+    override-pull: |
+      craftctl default
+      craftctl set version="$(git describe --tags | sed 's/^v//' | cut -d "-" -f1)"
     
     build-packages:
       - openjdk-21-jre-headless
