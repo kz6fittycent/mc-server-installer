@@ -16,6 +16,7 @@ website: https://minecraft.net
 contact: https://github.com/kz6fittycent/mc-server-installer/issues
 issues: https://github.com/kz6fittycent/mc-server-installer/issues
 source-code: https://github.com/kz6fittycent/mc-server-installer
+icon: snap/local/mc-server-installer.png
 
 license: MIT
 base: core24
