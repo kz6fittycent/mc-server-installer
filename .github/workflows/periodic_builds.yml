@@ -1,4 +1,4 @@
-name: Periodic Builds
+name: Periodic Builds and Scans
 on:
   # Runs at 10:00 UTC every 1st day of every month
   schedule:
