@@ -28,6 +28,6 @@ jobs:
           # slots: ./slot-declaration.json
       
       - uses: anchore/scan-action@v3
-        id: vulnerability scan
+        id: vulnerability_scan
         with:
           image: "localbuild/testimage:latest" 
