@@ -13,3 +13,4 @@ jobs:
     steps:
       - uses: anchore/scan-action@v3
         with: snapcore/action-build@v1
+        id: build

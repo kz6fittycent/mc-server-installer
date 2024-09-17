@@ -15,14 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [16.x]    
+        node-version: [20.x]    
 
     steps:
       - uses: actions/checkout@v2
 
       - uses: snapcore/action-build@v1
         id: build
-
+        
+      - uses: anchore/scan-action@v3
+        id: scan
+        
       - uses: diddlesnaps/snapcraft-review-action@v1
         with:
           snap: ${{ steps.build.outputs.snap }}
