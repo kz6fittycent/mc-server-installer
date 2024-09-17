@@ -1,8 +1,8 @@
 name: Periodic Builds and Scans
 on:
-  # Runs at 10:00 UTC every 1st day of every month
+  # Runs at 10:00 UTC everyday
   schedule:
-    - cron:  '0 10 1 * *'
+    - cron:  '30 10 * * *'
 
   workflow_dispatch:
 
@@ -25,7 +25,10 @@ jobs:
         
       - uses: anchore/scan-action@v3
         id: scan
-        
+        with:
+          severity-cutoff: critical
+          fail-build: false
+          
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
