@@ -3,24 +3,13 @@ on:
   # Runs at 11:00 UTC every 1st day of every month
   schedule:
     - cron:  '0 11 1 * *'
-
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [16.x]  
+        node-version: [20.x]  
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: snapcore/action-build@v1
-        id: build
-
       - uses: anchore/scan-action@v3
-<<<<<<< HEAD
-        id: vulnerability scan
-=======
-        id: vulnerability_scan
->>>>>>> origin/master
-        with:
-          image: "localbuild/testimage:latest"  
+        with: snapcore/action-build@v1
