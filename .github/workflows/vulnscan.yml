@@ -17,6 +17,10 @@ jobs:
         id: build
 
       - uses: anchore/scan-action@v3
+<<<<<<< HEAD
         id: vulnerability scan
+=======
+        id: vulnerability_scan
+>>>>>>> origin/master
         with:
           image: "localbuild/testimage:latest"  
