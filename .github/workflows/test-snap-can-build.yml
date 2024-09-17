@@ -26,3 +26,8 @@ jobs:
           # Plugs and Slots declarations to override default denial (requires store assertion to publish)
           # plugs: ./plug-declaration.json
           # slots: ./slot-declaration.json
+      
+      - uses: anchore/scan-action@v3
+        id: vulnerability scan
+        with:
+          image: "localbuild/testimage:latest" 
