@@ -19,7 +19,7 @@ jobs:
       - uses: snapcore/action-build@v1
         id: build
         
-      - uses: anchore/scan-action@v4
+      - uses: anchore/scan-action@v5
         id: scan            
 
       - uses: diddlesnaps/snapcraft-review-action@v1
