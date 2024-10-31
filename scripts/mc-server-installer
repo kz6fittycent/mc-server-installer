@@ -13,6 +13,9 @@ fi
 # DEFINE LATEST JAR
 LATEST=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.latest.release'`
 
+# DEFINE INSTALLED JAR
+INSTALLED=`find -iname "$SNAP_USER_DATA/versions/*" | sort -n | tail -1 | cut -d "/" -f2`
+
 # DEFINE URL
 MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.versions[] |select(.id=="'"$LATEST"'") |.url'`
 
@@ -62,7 +65,14 @@ echo "                   MENU              "
 echo ""
 echo "------------------------------------------"
 echo ""
-echo "ATTENTION: Latest available version: ${LATEST}"
+if ${INSTALLED} != ${LATEST}
+then
+    echo "ATTENTION: A new version ${LATEST} is"
+    echo "available for download!"
+    echo "Select OPTION 1 to get it."
+else
+    echo "You're running the latest version (${LATEST})"
+fi
 echo ""
 echo "Select from the following options: " 
 echo ""
