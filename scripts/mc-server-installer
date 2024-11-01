@@ -65,6 +65,8 @@ echo "                   MENU              "
 echo ""
 echo "------------------------------------------"
 echo ""
+echo "           Installed version: ${INSTALLED}"
+echo ""
 if ["${INSTALLED}" != "${LATEST}"]
 then
     echo "ATTENTION: Version ${LATEST} is"
