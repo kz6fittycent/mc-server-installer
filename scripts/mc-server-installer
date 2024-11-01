@@ -14,7 +14,7 @@ fi
 LATEST=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.latest.release'`
 
 # DEFINE INSTALLED JAR
-INSTALLED=`ls ~/snap/mc-server-installer/current/versions/ | sort -n | tail -1`
+INSTALLED=`ls /home/$USER/snap/mc-server-installer/current/versions/ | sort -n | tail -1`
 
 # DEFINE URL
 MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.versions[] |select(.id=="'"$LATEST"'") |.url'`
