@@ -14,7 +14,7 @@ fi
 LATEST=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.latest.release'`
 
 # DEFINE INSTALLED JAR
-INSTALLED=`find -iname "$SNAP_USER_DATA/versions/*" | sort -n | tail -1 | cut -d "/" -f2`
+INSTALLED=`cd ${SNAP_USER_DATA}/versions/ && find -iname "*" | sort -n | tail -1 | cut -d "/" -f2 && cd ${SNAP_USER_DATA}`
 
 # DEFINE URL
 MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.versions[] |select(.id=="'"$LATEST"'") |.url'`
