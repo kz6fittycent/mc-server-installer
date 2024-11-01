@@ -65,7 +65,7 @@ echo "                   MENU              "
 echo ""
 echo "------------------------------------------"
 echo ""
-if ${INSTALLED} != ${LATEST}
+if ["${INSTALLED}" != "${LATEST}"]
 then
     echo "ATTENTION: Version ${LATEST} is"
     echo "available for download!"
