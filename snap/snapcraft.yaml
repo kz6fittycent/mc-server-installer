@@ -45,7 +45,15 @@ parts:
     override-pull: |
       craftctl default
       craftctl set version="$(git describe --tags | sed 's/^v//' | cut -d "-" -f1)"
-      
+
+    build-packages:
+      - openjdk-21-jre-headless
+      - curl
+      - sed
+      - jq
+      - nano
+      - tar
+            
     stage-packages:
       - openjdk-21-jre-headless
       - curl
