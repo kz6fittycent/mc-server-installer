@@ -48,11 +48,6 @@ parts:
 
     build-packages:
       - openjdk-21-jre-headless
-      - curl
-      - sed
-      - jq
-      - nano
-      - tar
             
     stage-packages:
       - openjdk-21-jre-headless
