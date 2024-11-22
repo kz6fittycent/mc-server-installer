@@ -17,6 +17,7 @@ contact: https://github.com/kz6fittycent/mc-server-installer/issues
 issues: https://github.com/kz6fittycent/mc-server-installer/issues
 source-code: https://github.com/kz6fittycent/mc-server-installer
 icon: snap/local/mc-server-installer.png
+donation: https://www.patreon.com/kz6fittycent
 
 license: MIT
 base: core24
