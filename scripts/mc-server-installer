@@ -1,14 +1,7 @@
 #!/bin/sh
 
-# ARCH VARIABLES
-
-if [ "$SNAP_ARCH" = "amd64" ]; then
-  ARCH="x86_64-linux-gnu"
-elif [ "$SNAP_ARCH" = "armhf" ]; then
-  ARCH="arm-linux-gnueabihf"
-else
-  ARCH="$SNAP_ARCH-linux-gnu"
-fi
+# Discover Java Version and Arch
+JAVA_VER=$(ls $SNAP/usr/lib/jvm/ | grep jdk | head -n 1)
 
 # DEFINE LATEST JAR
 LATEST=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' |jq -r '.latest.release'`
@@ -23,7 +16,7 @@ MANIFEST_URL=`curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manife
 JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 
 # java paths
-export JAVA_HOME=$SNAP/usr/lib/jvm/java-1.21.0-openjdk-$SNAP_ARCH
+export JAVA_HOME=$SNAP/usr/lib/jvm/$JAVA_VER
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 # Colors and font characteristics
