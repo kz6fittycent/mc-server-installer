@@ -32,6 +32,9 @@ A Minecraft server installer and configuration tool
     This snap package was built from scratch with an MIT License, by kz6fittycent:
  
     https://github.com/kz6fittycent/mc-server-installer
+
+#### If you like what I'm doing, please consider supporting me on Patreon!
+[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/kz6fittycent)    
  
 ------------------------------------------------------------------
 
