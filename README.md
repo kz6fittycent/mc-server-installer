@@ -1,5 +1,8 @@
 [![mc-server-installer](https://snapcraft.io//mc-server-installer/badge.svg)](https://snapcraft.io/mc-server-installer)[![🧪 Snap Builds](https://github.com/kz6fittycent/mc-server-installer/workflows/%F0%9F%A7%AA%20Snap%20Builds/badge.svg)](https://github.com/kz6fittycent/mc-server-installer/actions?query=workflow:"🧪+Snap+Builds")[![Periodic Builds and Scans](https://github.com/kz6fittycent/mc-server-installer/actions/workflows/periodic_builds.yml/badge.svg)](https://github.com/kz6fittycent/mc-server-installer/actions/workflows/periodic_builds.yml)
 
+#### If you like what I'm doing, please consider supporting me on Patreon!
+[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/kz6fittycent)  
+
 # MC-Server-Installer
 A Minecraft server installer and configuration tool
 
@@ -33,9 +36,6 @@ A Minecraft server installer and configuration tool
  
     https://github.com/kz6fittycent/mc-server-installer
 
-#### If you like what I'm doing, please consider supporting me on Patreon!
-[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/kz6fittycent)    
- 
 ------------------------------------------------------------------
 
 # To install:
