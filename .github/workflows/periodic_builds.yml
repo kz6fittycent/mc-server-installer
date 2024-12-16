@@ -23,7 +23,7 @@ jobs:
       - uses: snapcore/action-build@v1
         id: build
         
-      - uses: anchore/scan-action@v5
+      - uses: anchore/scan-action@v6
         id: scan
         with:
           severity-cutoff: critical
