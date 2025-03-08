@@ -4,13 +4,6 @@
 # Original script: https://github.com/kz6fittycent/mc-server-installer/blob/master/scripts/mc-server-installer
 # Current date: March 07, 2025
 
-# Check for dialog and install if missing
-#if ! command -v dialog &> /dev/null; then
-#    echo "The 'dialog' utility is required but not installed."
-#    echo "Please install it (e.g., 'sudo apt install dialog') and rerun the script."
-#    exit 1
-#fi
-
 # Discover Java Version and Arch
 JAVA_VER=$(ls $SNAP/usr/lib/jvm/ | grep jdk | head -n 1)
 
@@ -57,8 +50,6 @@ while true; do
         "11" "Run custom RAM settings" \
         "12" "Run custom jar file and RAM settings" \
         "13" "Quit" \
-        2>&1 >/dev/tty) || {
-        dialog --msgbox "Installation cancelled." 6 30
         exit 0
     }
 
@@ -126,7 +117,7 @@ while true; do
             break
             ;;
     esac
-    # No need for "press RETURN for menu" as dialog inherently returns to the menu
+
 done
 
 exit 0
