@@ -57,6 +57,8 @@ parts:
       - jq
       - nano
       - tar
+      - screen
+      - dialog
     
   publish:
     plugin: dump
