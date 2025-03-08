@@ -1,5 +1,16 @@
 #!/bin/sh
 
+# Minecraft Server Installer with TUI using dialog
+# Original script: https://github.com/kz6fittycent/mc-server-installer/blob/master/scripts/mc-server-installer
+# Current date: March 07, 2025
+
+# Check for dialog and install if missing
+#if ! command -v dialog &> /dev/null; then
+#    echo "The 'dialog' utility is required but not installed."
+#    echo "Please install it (e.g., 'sudo apt install dialog') and rerun the script."
+#    exit 1
+#fi
+
 # Discover Java Version and Arch
 JAVA_VER=$(ls $SNAP/usr/lib/jvm/ | grep jdk | head -n 1)
 
@@ -19,209 +30,103 @@ JAR_URL=`curl -fsSL "$MANIFEST_URL" |jq -r '.downloads.server.url'`
 export JAVA_HOME=$SNAP/usr/lib/jvm/$JAVA_VER
 export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
-# Colors and font characteristics
-RED="\e[0;91m"
-BLUE="\e[0;94m"
-BOLD="\e[1m"
-RESET="\e[0m"
+# Colors and font characteristics (preserved as comments, adapted where possible)
+# RED="\e[0;91m"
+# BLUE="\e[0;94m"
+# BOLD="\e[1m"
+# RESET="\e[0m"
 
 cd $SNAP_USER_DATA
 
-clear
+# Welcome message
+dialog --title "MC-SERVER-INSTALLER" --msgbox "Welcome to MC-SERVER-INSTALLER\n\nNOTE\n----\nYOU MUST AGREE TO THE EULA PRIOR TO RUNNING THE SERVER\nFIRST TIME ONLY" 12 50
 
-# START THE INSTALLER
-echo "--------------------------------"
-echo ""
-echo " ${BOLD}Welcome to MC-SERVER-INSTALLER${RESET}"
-echo ""
-echo "--------------------------------"
-sleep 1.0
-echo "
+# Main menu loop
+while true; do
+    CHOICE=$(dialog --title "MINECRAFT SERVER INSTALLER MENU" --menu "Installed version: $INSTALLED\n\nSelect from the following options:" 20 60 13 \
+        "1" "Download latest (v$LATEST) server.jar" \
+        "2" "Agree to the EULA" \
+        "3" " Edit the server.properties file" \
+        "4" " Run MC server with max 2GB of RAM" \
+        "5" " Run MC server with max 4GB of RAM" \
+        "6" " Run MC server with max 6GB of RAM" \
+        "7" " Run MC server with max 8GB of RAM" \
+        "8" " Run MC server with max 16GB of RAM" \
+        "9" " View README" \
+        "10" "Back up your world" \
+        "11" "Run custom RAM settings" \
+        "12" "Run custom jar file and RAM settings" \
+        "13" "Quit" \
+        2>&1 >/dev/tty) || {
+        dialog --msgbox "Installation cancelled." 6 30
+        exit 0
+    }
 
-"
-echo "              ${BOLD}NOTE${RESET}"
-echo "            --------"
-echo "${RED}YOU MUST AGREE TO THE EULA PRIOR"
-echo "    TO RUNNING THE SERVER"
-echo "       FIRST TIME ONLY${RESET}"
-echo ""
-sleep 1.5
+    clear
+    case $CHOICE in
+        1)
+            dialog --title "Downloading" --infobox "Downloading v${LATEST} server.jar..." 6 40
+            curl -so server.jar $JAR_URL
+            ;;
+        2)
+            dialog --title "EULA" --infobox "Setting things up first...\n\nAgreeing to the EULA...\n\nIgnore any errors, as they are normal..." 10 50
+            sleep 1.0
+            java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            sed -ie s/false/true/g eula.txt
+            dialog --msgbox "Done!" 6 30
+            ;;
+        3)
+            dialog --title "Editing" --infobox "Opening the server.properties file..." 6 40
+            nano server.properties
+            ;;
+        4)
+            dialog --title "Starting Server" --infobox "Starting server with 2GB of RAM..." 6 40
+            java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            ;;
+        5)
+            dialog --title "Starting Server" --infobox "Starting server with 4GB of RAM..." 6 40
+            java -Xmx4096M -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            ;;
+        6)
+            dialog --title "Starting Server" --infobox "Starting server with 6GB of RAM..." 6 40
+            java -Xmx6144M -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            ;;
+        7)
+            dialog --title "Starting Server" --infobox "Starting server with 8GB of RAM..." 6 40
+            java -Xmx8192M -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            ;;
+        8)
+            dialog --title "Starting Server" --infobox "Starting server with 16GB of RAM..." 6 40
+            java -Xmx16384M -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            ;;
+        9)
+            dialog --title "README" --msgbox "MC-SERVER-INSTALLER is not an officially supported or licensed application of Mojang.\n\nThe first time you run the installer, you'll need to download the .jar file (i.e. select option #1).\nNow you may select option 2 to agree to the EULA. You will never have to do this again, unless you remove the snap.\n\n       NO. THIS WON'T BE CHANGED!\n          BECAUSE LEGAL STUFF\n\nAfter selecting option #2, you can proceed with choosing any of the other options or setting up your server's configuration which is located in:\n~/snap/mc-server-installer/current\n\nAnytime you need to update the server.jar, just select option 1 again. No need to agree to the EULA\n\nThis snap package was built from scratch with an MIT License, by kz6fittycent:\ngithub.com/kz6fittycent/mc-server-installer" 20 70
+            ;;
+        10)
+            dialog --title "Backup" --infobox "Backing everything up..." 6 40
+            sleep 0.5
+            tar -cvzf /home/$USER/mc-server-installer_backup.tar.gz /home/$USER/snap/mc-server-installer/current/*
+            dialog --msgbox "Your backup is now located in /home/$USER" 6 50
+            sleep 1.5
+            ;;
+        11)
+            RAM=$(dialog --title "Custom RAM Settings" --inputbox "You MUST follow the format outlined here:\nhttps://minecraft.gamepedia.com/Server/Requirements\n\n(e.g. 4096M). You only need to enter the value, not the full java command. So, just 4096M or 8192M as a value, or whatever you want your MAX value to be.\nIf you see errors, just double-check your entry\n\nONLY MAX RAM SETTINGS ARE APPLIED!\n\nMinimum REQUIRED RAM is 1024M!" 15 60 2>&1 >/dev/tty) || continue
+            dialog --title "Starting Server" --infobox "Running your server with MAX ${RAM}..." 6 40
+            sleep 0.5
+            java -Xmx${RAM} -Xms128M -XX:+UseG1GC -jar server.jar nogui
+            ;;
+        12)
+            JAR=$(dialog --title "Custom JAR File" --inputbox "You MUST provide the full path to your jar file!\ne.g. /home/$USER/custom_jar.jar" 10 50 2>&1 >/dev/tty) || continue
+            RAM2=$(dialog --title "Custom RAM Settings" --inputbox "Set MAX RAM Values\n\nYou MUST follow the format outlined here:\nhttps://minecraft.gamepedia.com/Server/Requirements\n\n(e.g. 4096M). You only need to enter the value, not the full java command. So, just 4096M or 8192M as a value, or whatever you want your MAX value to be.\nIf you see errors, just double-check your entry\n\nONLY MAX RAM SETTINGS ARE APPLIED!\n\nMinimum REQUIRED MAX RAM entry is 1024M!" 15 60 2>&1 >/dev/tty) || continue
+            dialog --title "Starting Server" --infobox "Running your custom MC server.jar with MAX ${RAM2}..." 6 50
+            sleep 0.5
+            java -Xmx${RAM2} -Xms128M -XX:+UseG1GC -jar ${JAR} nogui
+            ;;
+        13)
+            break
+            ;;
+    esac
+    # No need for "press RETURN for menu" as dialog inherently returns to the menu
+done
 
-while [ answer != "0" ]  
-do 
-clear 
-
-echo "------------------------------------------"
-echo ""
-echo "         MINECRAFT SERVER INSTALLER"
-echo "                   MENU              "
-echo ""
-echo "------------------------------------------"
-echo ""
-echo "          Installed version: ${INSTALLED}"
-echo ""
-echo ""
-echo "Select from the following options: " 
-echo ""
-echo "1) Download latest (v${LATEST}) server.jar"
-echo "2) Agree to the EULA"
-echo "3) Edit the server.properties file"
-echo "4) Run MC server with max 2GB of RAM"
-echo "5) Run MC server with max 4GB of RAM"
-echo "6) Run MC server with max 6GB of RAM"
-echo "7) Run MC server with max 8GB of RAM"
-echo "8) Run MC server with max 16GB of RAM"
-echo "9) View README"
-echo "10) Back up your world"
-echo "11) Run custom RAM settings"
-echo "12) Run custom jar file and RAM settings"
-echo "13) Quit"
-echo "" 
-read -p "Choice: " answer 
-clear
-    case $answer in 
-       1) echo "Downloading v${LATEST} server.jar..."
-       echo "" 
-       curl -so server.jar $JAR_URL 
-       ;; 
-       2) echo "Setting things up first..."
-       echo ""
-       echo "Agreeing to the EULA..."
-       echo ""
-       echo "Ignore any errors, as they are normal..."
-       echo ""
-       sleep 1.0 
-       java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui    
-       echo ""
-       sed -ie s/false/true/g eula.txt
-       echo ""
-       echo "Done!"
-       echo ""
-       ;; 
-       3) echo "Opening the server.properties file..."
-       echo ""
-       nano server.properties
-       echo ""
-       ;;
-       4) echo "Starting server with 2GB of RAM..."
-       echo ""
-       java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui
-       ;; 
-       5) echo "Starting server with 4GB of RAM..."
-       echo ""
-       java -Xmx4096M -Xms128M -XX:+UseG1GC -jar server.jar nogui
-       ;;
-       6) echo "Starting server with 6GB of RAM..."
-       echo ""
-       java -Xmx6144M -Xms128M -XX:+UseG1GC -jar server.jar nogui       
-       ;;
-       7) echo "Starting server with 8GB of RAM..."
-       echo ""
-       java -Xmx8192M -Xms128M -XX:+UseG1GC -jar server.jar nogui       
-       ;;
-       8) echo "Starting server with 16GB of RAM..."
-       echo ""
-       java -Xmx16384M -Xms128M -XX:+UseG1GC -jar server.jar nogui
-       ;;
-       9) echo ""
-          echo "MC-SERVER-INSTALLER is not an officially"
-          echo "supported or licensed application of "
-          echo "Mojang."
-          echo ""
-          echo "The first time you run the installer,"
-          echo "you'll need to download the .jar file"
-          echo "(i.e. select option #1)." 
-          echo "Now you may select option 2 to agree to" 
-          echo "the EULA. You will never have to do this"
-          echo "again, unless you remove the snap."
-          echo ""
-          echo "       ${BOLD}${RED}NO. THIS WON'T BE CHANGED!" 
-          echo "          BECAUSE LEGAL STUFF${RESET}"
-          echo ""
-          echo "After selecting option #2, you can proceed"
-          echo "with choosing any of the other options or"
-          echo "setting up your server's configuration"
-          echo "which is located in:"
-          echo "${BLUE}~/snap/mc-server-installer/current${RESET}"
-          echo ""
-          echo "Anytime you need to update the server.jar,"
-          echo "just select option 1 again. No need to agree"
-          echo "to the EULA"
-          echo ""
-          echo "This snap package was built from scratch"
-          echo "with an MIT License, by kz6fittycent:"
-          echo ""
-          echo "${BLUE}github.com/kz6fittycent/mc-server-installer${RESET}"
-          echo ""
-          ;;
-       10) echo ""
-           echo "Backing everything up..."
-           echo ""
-           sleep .5
-           tar -cvzf /home/$USER/mc-server-installer_backup.tar.gz /home/$USER/snap/mc-server-installer/current/*
-           echo ""
-           echo "${BOLD}${BLUE}Your backup is now located in /home/$USER${RESET}"
-           echo ""
-           sleep 1.5
-           ;;
-       11) echo ""
-           echo "You ${BOLD}MUST${RESET} follow the format outlined here:"
-           echo "${BLUE}https://minecraft.gamepedia.com/Server/Requirements${RESET}"
-           echo ""
-           echo "(e.g. 4096M). You only need to enter the value, not"
-           echo "the full java command. So, just 4096M or 8192M as a"
-           echo "value, or whatever you want your MAX value to be." 
-           echo "If you see errors, just double-check your entry"
-           echo ""
-           echo "ONLY MAX RAM SETTINGS ARE APPLIED!"
-           echo ""
-           echo "Minimum REQUIRED RAM is 1024M!"
-           echo ""
-           sleep 3
-           
-           read -p "Enter your MAX RAM settings: " RAM
-           echo ""
-           echo "Running your server with MAX ${RAM}..."
-           echo ""
-           sleep .5
-           java -Xmx${RAM} -Xms128M -XX:+UseG1GC -jar server.jar nogui
-           ;;  
-       12) echo ""
-           echo "You ${BOLD}MUST${RESET} provide the full path to your jar file!"
-           echo "e.g. /home/$USER/custom_jar.jar"
-           echo ""  
-           sleep 3           
-           read -p "Enter the location of your custom jar file (e.g. /home/$USER/server.jar): " JAR
-           echo ""
-
-           sleep .5
-           echo ""
-           echo "Set MAX RAM Values"
-           echo ""
-           echo "You ${BOLD}MUST${RESET} follow the format outlined here:"
-           echo "${BLUE}https://minecraft.gamepedia.com/Server/Requirements${RESET}"
-           echo ""
-           echo "(e.g. 4096M). You only need to enter the value, not"
-           echo "the full java command. So, just 4096M or 8192M as a"
-           echo "value, or whatever you want your MAX value to be." 
-           echo "If you see errors, just double-check your entry"
-           echo ""
-           echo "ONLY MAX RAM SETTINGS ARE APPLIED!"
-           echo ""
-           echo "Minimum REQUIRED MAX RAM entry is 1024M!"
-           echo ""
-           sleep 3
-           
-           read -p "Enter your MAX RAM settings: " RAM2
-           echo ""
-           echo "Running your custom MC server.jar with MAX ${RAM}..."
-           echo ""
-           sleep .5
-           java -Xmx${RAM2} -Xms128M -XX:+UseG1GC -jar ${JAR} nogui
-           ;;            
-       13) break ;; 
-   esac  
-   echo "press RETURN for menu" 
-   read key 
-done 
 exit 0
