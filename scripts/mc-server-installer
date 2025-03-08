@@ -1,8 +1,6 @@
 #!/bin/sh
 
 # Minecraft Server Installer with TUI using dialog
-# Original script: https://github.com/kz6fittycent/mc-server-installer/blob/master/scripts/mc-server-installer
-# Current date: March 07, 2025
 
 # Discover Java Version and Arch
 JAVA_VER=$(ls $SNAP/usr/lib/jvm/ | grep jdk | head -n 1)
