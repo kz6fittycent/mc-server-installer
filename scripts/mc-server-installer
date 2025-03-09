@@ -23,6 +23,9 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 
 cd $SNAP_USER_DATA
 
+# Store server PID
+SERVER_PID=""
+
 # Welcome message
 dialog --title "MC-SERVER-INSTALLER" --msgbox "Welcome to MC-SERVER-INSTALLER\n\nNOTE\n----\nYOU MUST AGREE TO THE EULA PRIOR TO RUNNING THE SERVER\nFIRST TIME ONLY" 12 50
 
@@ -41,6 +44,7 @@ while true; do
         "10" "Back up your world" \
         "11" "Run custom RAM settings" \
         "12" "Run custom jar file and RAM settings" \
+        "13" "Stop the server" \
         2>&1 >/dev/tty) || {
         dialog --msgbox "Exiting MC-Server-Installer." 6 30
         exit 0
@@ -119,6 +123,15 @@ while true; do
             setsid "$JAVA_HOME/bin/java" -Xmx${RAM2} -Xms128M -XX:+UseG1GC -jar ${JAR} nogui > server.log 2>&1 &
             sleep 1
             dialog --msgbox "Server started in background. Check 'server.log' for output." 6 50           
+            ;;
+        13)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                kill "$SERVER_PID"
+                dialog --msgbox "Server stopped (PID: $SERVER_PID)." 6 40
+                SERVER_PID=""
+            else
+                dialog --msgbox "No server is running." 6 40
+            fi
             ;;
     esac
 done
