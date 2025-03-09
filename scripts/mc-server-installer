@@ -125,8 +125,8 @@ while true; do
             dialog --msgbox "Server started in background. Check 'server.log' for output." 6 50           
             ;;
         13)
-            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
-                kill "$SERVER_PID"
+            if [ -n "$SERVER_PID" ]
+            then $SERVER_PID | xargs kill -9
                 dialog --msgbox "Server stopped (PID: $SERVER_PID)." 6 40
             else
                 dialog --msgbox "No server is running." 6 40
