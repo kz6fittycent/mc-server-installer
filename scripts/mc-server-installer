@@ -24,7 +24,7 @@ export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
 cd $SNAP_USER_DATA
 
 # Store server PID
-SERVER_PID=""
+SERVER_PID=`ps aux | grep mc-server | awk {'print $2'}`
 
 # Welcome message
 dialog --title "MC-SERVER-INSTALLER" --msgbox "Welcome to MC-SERVER-INSTALLER\n\nNOTE\n----\nYOU MUST AGREE TO THE EULA PRIOR TO RUNNING THE SERVER\nFIRST TIME ONLY" 12 50
@@ -128,7 +128,6 @@ while true; do
             if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
                 kill "$SERVER_PID"
                 dialog --msgbox "Server stopped (PID: $SERVER_PID)." 6 40
-                SERVER_PID=""
             else
                 dialog --msgbox "No server is running." 6 40
             fi
