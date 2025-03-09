@@ -57,7 +57,7 @@ parts:
       - jq
       - nano
       - tar
-      - screen
+      - util-linux
       - dialog
     
   publish:
