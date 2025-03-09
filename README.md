@@ -36,6 +36,16 @@ A Minecraft server installer and configuration tool
  
     https://github.com/kz6fittycent/mc-server-installer
 
+### TUI USAGE:
+
+    The application will start the server running in the background. 
+    You can check your logs via server.log. You can go ahead and safely quit the TUI, and 
+    it won't interrupt the server running. 
+    
+    You can either stop the server using the typical commands in the terminal 
+    (e.g. searching for the pids) or you can return to the TUI, and scroll to "Option 13" 
+    and hit enter. The TUI will stop the server running.
+
 ------------------------------------------------------------------
 
 # To install:
