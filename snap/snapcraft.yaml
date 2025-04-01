@@ -59,6 +59,7 @@ parts:
       - tar
       - util-linux
       - dialog
+      - tmux
     
   publish:
     plugin: dump
