@@ -1,0 +1,225 @@
+#!/bin/sh
+
+# Minecraft Server Installer with TUI using dialog
+
+# Discover Java Version and Arch
+JAVA_VER=$(ls $SNAP/usr/lib/jvm/ | grep java | head -n 1)
+
+# DEFINE LATEST JAR
+LATEST=$(curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' | jq -r '.latest.release')
+
+# DEFINE INSTALLED JAR
+INSTALLED=$(ls /home/$USER/snap/mc-server-installer/current/versions/ 2>/dev/null | sort -n | tail -1 || echo "None")
+
+# DEFINE URL
+MANIFEST_URL=$(curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' | jq -r '.versions[] | select(.id=="'"$LATEST"'") | .url')
+
+# URL CONT'D
+JAR_URL=$(curl -fsSL "$MANIFEST_URL" | jq -r '.downloads.server.url')
+
+# java paths
+export JAVA_HOME=$SNAP/usr/lib/jvm/$JAVA_VER
+export PATH=$JAVA_HOME/bin:$JAVA_HOME/jre/bin:$PATH
+
+cd $SNAP_USER_DATA
+
+# Store server PID
+SERVER_PID=""
+
+# Welcome message
+dialog --title "MC-SERVER-INSTALLER" --msgbox "Welcome to MC-SERVER-INSTALLER\n\nNOTE\n----\nYOU MUST AGREE TO THE EULA PRIOR TO RUNNING THE SERVER\nFIRST TIME ONLY" 12 50
+
+# Main menu loop
+while true; do
+    CHOICE=$(dialog --title "MINECRAFT SERVER INSTALLER MENU" --ok-label "Select" --cancel-label "Quit" --menu "Installed version: $INSTALLED\n\nSelect from the following options:" 24 60 16 \
+        "1"  "Download latest (v$LATEST) server.jar" \
+        "2"  " Agree to the EULA" \
+        "3"  "Edit the server.properties file" \
+        "4"  "Run MC server with max 2GB of RAM" \
+        "5"  "Run MC server with max 4GB of RAM" \
+        "6"  "Run MC server with max 6GB of RAM" \
+        "7"  "Run MC server with max 8GB of RAM" \
+        "8"  "Run MC server with max 16GB of RAM" \
+        "9"  "View README" \
+        "10" "Back up your world" \
+        "11" "Run custom RAM settings" \
+        "12" "Run custom jar file and RAM settings" \
+        "13" "Stop the server" \
+        "14" "Add player to whitelist (live)" \
+        "15" "Make player an operator (live)" \
+        "16" "Add player to whitelist (offline)" \
+        2>&1 >/dev/tty) || {
+        dialog --msgbox "Exiting MC-Server-Installer." 6 30
+        exit 0
+    }
+
+    clear
+    case $CHOICE in
+        1)
+            dialog --title "Downloading" --infobox "Downloading v${LATEST} server.jar..." 6 40
+            curl -so server.jar $JAR_URL
+            ;;
+        2)
+            dialog --title "EULA" --infobox "Setting things up first...\n\n Agreeing to the EULA...\n\nIgnore any errors, as they are normal..." 10 50
+            sleep 1.0
+            tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui"
+            SERVER_PID=$(pgrep -f "java.*server.jar")
+            sleep 2
+            sed -i 's/false/true/g' eula.txt 2>/dev/null || echo "eula=true" > eula.txt
+            tmux send-keys -t mcserver "stop" C-m
+            sleep 2
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+                kill "$SERVER_PID"
+            fi
+            SERVER_PID=""
+            dialog --msgbox "Done!" 6 30
+            ;;
+        3)
+            dialog --title "Editing" --infobox "Opening the server.properties file..." 6 40
+            nano server.properties
+            ;;
+        4)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                dialog --title "Starting Server" --infobox "Starting server with 2GB of RAM..." 6 40
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        5)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                dialog --title "Starting Server" --infobox "Starting server with 4GB of RAM..." 6 40
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx4096M -Xms128M -XX:+UseG1GC -jar server.jar nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        6)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                dialog --title "Starting Server" --infobox "Starting server with 6GB of RAM..." 6 40
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx6144M -Xms128M -XX:+UseG1GC -jar server.jar nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        7)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                dialog --title "Starting Server" --infobox "Starting server with 8GB of RAM..." 6 40
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx8192M -Xms128M -XX:+UseG1GC -jar server.jar nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        8)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                dialog --title "Starting Server" --infobox "Starting server with 16GB of RAM..." 6 40
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx16384M -Xms128M -XX:+UseG1GC -jar server.jar nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        9)
+            dialog --title "README" --msgbox "MC-SERVER-INSTALLER is not an officially supported or licensed application of Mojang.\n\nThe first time you run the installer, you'll need to download the .jar file (i.e. select option #1). Now you may select option 2 to agree to the EULA. You will never have to do this again, unless you remove the snap. NO. THIS WON'T BE CHANGED! BECAUSE LEGAL STUFF\n\nAfter selecting option #2, you can proceed with choosing any of the other options or setting up your server's configuration which is located in: ~/snap/mc-server-installer/current\n\nAnytime you need to update the server.jar, just select option 1 again. No need to agree to the EULA\n\nThis snap package was built from scratch with an MIT License, by kz6fittycent: github.com/kz6fittycent/mc-server-installer" 20 70
+            ;;
+        10)
+            dialog --title "Backup" --infobox "Backing everything up..." 6 40
+            sleep 0.5
+            tar -cvzf /home/$USER/mc-server-installer_backup.tar.gz /home/$USER/snap/mc-server-installer/current/*
+            dialog --msgbox "Your backup is now located in /home/$USER" 6 50
+            sleep 1.5
+            ;;
+        11)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                RAM=$(dialog --title "Custom RAM Settings" --ok-label "Select" --cancel-label "Back" --inputbox "You MUST follow the format outlined here:\nhttps://minecraft.gamepedia.com/Server/Requirements\n\n(e.g. 4096M). You only need to enter the value, not the full java command. So, just 4096M or 8192M as a value, or whatever you want your MAX value to be.\nIf you see errors, just double-check your entry\n\nONLY MAX RAM SETTINGS ARE APPLIED!\n\nMinimum REQUIRED RAM is 1024M!" 15 60 2>&1 >/dev/tty) || continue
+                dialog --title "Starting Server" --infobox "Running your server with MAX ${RAM}..." 6 40
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx${RAM} -Xms128M -XX:+UseG1GC -jar server.jar nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        12)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server is already running (PID: $SERVER_PID)." 6 40
+            else
+                JAR=$(dialog --title "Custom JAR File" --ok-label "Select" --cancel-label "Back" --inputbox "You MUST provide the full path to your jar file!\ne.g. /home/$USER/custom_jar.jar" 10 50 2>&1 >/dev/tty) || continue
+                RAM2=$(dialog --title "Custom RAM Settings" --ok-label "Select" --cancel-label "Back" --inputbox "Set MAX RAM Values\n\nYou MUST follow the format outlined here:\nhttps://minecraft.gamepedia.com/Server/Requirements\n\n(e.g. 4096M). You only need to enter the value, not the full java command. So, just 4096M or 8192M as a value, or whatever you want your MAX value to be.\nIf you see errors, just double-check your entry\n\nONLY MAX RAM SETTINGS ARE APPLIED!\n\nMinimum REQUIRED MAX RAM entry is 1024M!" 15 60 2>&1 >/dev/tty) || continue
+                dialog --title "Starting Server" --infobox "Running your custom MC server.jar with MAX ${RAM2}..." 6 50
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx${RAM2} -Xms128M -XX:+UseG1GC -jar '${JAR}' nogui > server.log 2>&1"
+                SERVER_PID=$(pgrep -f "java.*${JAR}")
+                sleep 1
+                dialog --msgbox "Server started (PID: $SERVER_PID). Check 'server.log' for output." 6 50
+            fi
+            ;;
+        13)
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+                tmux send-keys -t mcserver "stop" C-m
+                sleep 2
+                if kill -0 "$SERVER_PID" 2>/dev/null; then
+                    kill "$SERVER_PID"
+                fi
+                dialog --msgbox "Server stopped (PID: $SERVER_PID)." 6 40
+                SERVER_PID=""
+            else
+                dialog --msgbox "No server is running." 6 40
+            fi
+            ;;
+        14)
+            if [ -z "$SERVER_PID" ] || ! kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server must be running to add players live!" 6 40
+            else
+                USERNAME=$(dialog --title "Whitelist Player (Live)" --inputbox "Enter the Minecraft username to whitelist:" 8 40 2>&1 >/dev/tty) || continue
+                if [ -z "$USERNAME" ]; then
+                    dialog --msgbox "No username entered!" 6 30
+                else
+                    tmux send-keys -t mcserver "whitelist add $USERNAME" C-m
+                    dialog --msgbox "Sent 'whitelist add $USERNAME' to the server." 6 40
+                fi
+            fi
+            ;;
+        15)
+            if [ -z "$SERVER_PID" ] || ! kill -0 "$SERVER_PID" 2>/dev/null; then
+                dialog --msgbox "Server must be running to grant op live!" 6 40
+            else
+                USERNAME=$(dialog --title "Make Operator (Live)" --inputbox "Enter the Minecraft username to make an operator:" 8 40 2>&1 >/dev/tty) || continue
+                if [ -z "$USERNAME" ]; then
+                    dialog --msgbox "No username entered!" 6 30
+                else
+                    tmux send-keys -t mcserver "op $USERNAME" C-m
+                    dialog --msgbox "Sent 'op $USERNAME' to the server." 6 40
+                fi
+            fi
+            ;;
+        16)
+            USERNAME=$(dialog --title "Whitelist Player (Offline)" --inputbox "Enter the Minecraft username to whitelist:" 8 40 2>&1 >/dev/tty) || continue
+            if [ -z "$USERNAME" ]; then
+                dialog --msgbox "No username entered!" 6 30
+            else
+                if [ ! -f whitelist.json ]; then
+                    echo '[]' > whitelist.json
+                fi
+                jq --arg name "$USERNAME" '. |= . + [{"name": $name}] | unique_by(.name)' whitelist.json > tmp.json && mv tmp.json whitelist.json
+                dialog --msgbox "Added '$USERNAME' to whitelist.\nEnable 'white-list=true' in server.properties to use it." 8 50
+            fi
+            ;;
+    esac
+done
+
+exit 0
