@@ -17,7 +17,7 @@ SERVER_PID=""
 dialog --title "MC-SERVER-INSTALLER" --msgbox "Welcome to MC-SERVER-INSTALLER\n\nNOTE\n----\nYOU MUST AGREE TO THE EULA PRIOR TO RUNNING THE SERVER\nFIRST TIME ONLY" 12 50
 
 while true; do
-    CHOICE=$(dialog --title "MINECRAFT SERVER INSTALLER MENU" --ok-label "Select" --cancel-label "Quit" --menu "Installed version: $INSTALLED\n\nSelect from the following options:" 25 60 17 \
+    CHOICE=$(dialog --title "MINECRAFT SERVER INSTALLER MENU" --ok-label "Select" --cancel-label "Quit" --menu "\n           Running server PID: ${SERVER_PID}\n           Installed version: ${INSTALLED}\n\n Select from the following options:" 25 60 17 \
         "1"  "Download latest (v$LATEST) server.jar" \
         "2"  "Agree to the EULA" \
         "3"  "Edit the server.properties file" \
