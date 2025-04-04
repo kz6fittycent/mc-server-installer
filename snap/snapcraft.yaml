@@ -36,6 +36,7 @@ apps:
       - network
       - home
       - network-bind
+      - process-control #to help with stopping MC server 
 
 parts:
   mc-server-installer:

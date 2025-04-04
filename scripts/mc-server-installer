@@ -17,9 +17,9 @@ SERVER_PID=""
 dialog --title "MC-SERVER-INSTALLER" --msgbox "Welcome to MC-SERVER-INSTALLER\n\nNOTE\n----\nYOU MUST AGREE TO THE EULA PRIOR TO RUNNING THE SERVER\nFIRST TIME ONLY" 12 50
 
 while true; do
-    CHOICE=$(dialog --title "MINECRAFT SERVER INSTALLER MENU" --ok-label "Select" --cancel-label "Quit" --menu "Installed version: $INSTALLED\n\nSelect from the following options:" 24 60 16 \
+    CHOICE=$(dialog --title "MINECRAFT SERVER INSTALLER MENU" --ok-label "Select" --cancel-label "Quit" --menu "Installed version: $INSTALLED\n\nSelect from the following options:" 25 60 17 \
         "1"  "Download latest (v$LATEST) server.jar" \
-        "2"  " Agree to the EULA" \
+        "2"  "Agree to the EULA" \
         "3"  "Edit the server.properties file" \
         "4"  "Run MC server with max 2GB of RAM" \
         "5"  "Run MC server with max 4GB of RAM" \
@@ -33,7 +33,8 @@ while true; do
         "13" "Stop the server" \
         "14" "Add player to whitelist (live)" \
         "15" "Make player an operator (live)" \
-        "16" "Add player to whitelist (offline)" \
+        "16" "Remove player from operators (live)" \
+        "17" "Add player to whitelist (offline)" \
         2>&1 >/dev/tty) || {
         dialog --msgbox "Exiting MC-Server-Installer." 6 30
         exit 0
@@ -202,6 +203,19 @@ while true; do
             fi
             ;;
         16)
+            if ! tmux has-session -t mcserver 2>/dev/null; then
+                dialog --msgbox "Server must be running to remove op live!" 6 40
+            else
+                USERNAME=$(dialog --title "Remove Operator (Live)" --inputbox "Enter the Minecraft username to remove from operators:" 8 40 2>&1 >/dev/tty) || continue
+                if [ -z "$USERNAME" ]; then
+                    dialog --msgbox "No username entered!" 6 30
+                else
+                    tmux send-keys -t mcserver "deop $USERNAME" C-m
+                    dialog --msgbox "Sent 'deop $USERNAME' to the server." 6 40
+                fi
+            fi
+            ;;
+        17)
             USERNAME=$(dialog --title "Whitelist Player (Offline)" --inputbox "Enter the Minecraft username to whitelist:" 8 40 2>&1 >/dev/tty) || continue
             if [ -z "$USERNAME" ]; then
                 dialog --msgbox "No username entered!" 6 30
