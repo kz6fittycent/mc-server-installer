@@ -51,4 +51,7 @@ A Minecraft server installer and configuration tool
 # To install:
 `sudo snap install mc-server-installer`
 
+# Connect the interface:
+`sudo snap connect mc-server-installer:process-control`
+
 -------------------------------------------------------------------
