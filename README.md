@@ -109,4 +109,3 @@ Grab the source from [GitHub](https://github.com/kz6fittycent/mc-server-installe
 
 ## Contributing
 Fork the repo, make changes, and submit a pull request on [GitHub](https://github.com/kz6fittycent/mc-server-installer). Issues and suggestions welcome!
-```
