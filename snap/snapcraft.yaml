@@ -60,6 +60,7 @@ parts:
       - util-linux
       - dialog
       - tmux
+      - libhsdis0-fcml
     
   publish:
     plugin: dump
