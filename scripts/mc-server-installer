@@ -47,19 +47,23 @@ while true; do
             curl -so server.jar $JAR_URL
             ;;
         2)
-            dialog --title "EULA" --infobox "Setting things up first...\n\n Agreeing to the EULA...\n\nIgnore any errors, as they are normal..." 10 50
-            sleep 1.0
-            tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui"
-            SERVER_PID=$(pgrep -f "java.*server.jar")
-            sleep 2
-            sed -i 's/false/true/g' eula.txt 2>/dev/null || echo "eula=true" > eula.txt
-            tmux send-keys -t mcserver "stop" C-m
-            sleep 2
-            if kill -0 "$SERVER_PID" 2>/dev/null; then
-                kill "$SERVER_PID"
+            if ! grep -q "eula=true" ~/eula.txt; then
+                dialog --title "EULA" --infobox "Setting things up first...\n\n Agreeing to the EULA...\n\nIgnore any errors, as they are normal..." 10 50
+                sleep 1.0
+                tmux new-session -d -s mcserver "$JAVA_HOME/bin/java -Xmx2048M -Xms128M -XX:+UseG1GC -jar server.jar nogui"
+                SERVER_PID=$(pgrep -f "java.*server.jar")
+                sleep 2
+                sed -i 's/false/true/g' eula.txt 2>/dev/null || echo "eula=true" > eula.txt
+                tmux send-keys -t mcserver "stop" C-m
+                sleep 2
+                if kill -0 "$SERVER_PID" 2>/dev/null; then
+                    kill "$SERVER_PID"
+                fi
+                SERVER_PID=""
+                dialog --msgbox "Done!" 6 30
+            else
+                dialog --msgbox "The EULA has already been accepted!" 6 40
             fi
-            SERVER_PID=""
-            dialog --msgbox "Done!" 6 30
             ;;
         3)
             dialog --title "Editing" --infobox "Opening the server.properties file..." 6 40
