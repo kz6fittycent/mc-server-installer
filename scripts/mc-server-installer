@@ -2,6 +2,8 @@
 
 # Minecraft Server Installer with TUI using dialog
 
+[ $(id -u) -eq 0 ] && dialog --title "Root detected" --msgbox "Running a game server as root is a bad idea. Exiting." 6 50 && exit 1
+
 JAVA_VER=$(ls $SNAP/usr/lib/jvm/ | grep java | head -n 1)
 LATEST=$(curl -fsSL 'https://launchermeta.mojang.com/mc/game/version_manifest.json' | jq -r '.latest.release')
 INSTALLED=$(ls /home/$USER/snap/mc-server-installer/current/versions/ 2>/dev/null | sort -n | tail -1 || echo "None")
