@@ -49,10 +49,10 @@ parts:
       craftctl set version="$(git describe --tags | sed 's/^v//' | cut -d "-" -f1)"
 
     build-packages:
-      - openjdk-21-jre-headless
+      - openjdk-25-jre-headless
             
     stage-packages:
-      - openjdk-21-jre-headless
+      - openjdk-25-jre-headless
       - curl
       - sed
       - jq
