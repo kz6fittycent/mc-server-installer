@@ -173,9 +173,11 @@ jobs:
              sudo snap refresh ${SNAP_NAME} --channel latest/candidate
              \`\`\`
 
-          2. Run \`${SNAP_NAME}\`, download the latest server jar (option 1) and agree to the EULA (option 2).
-          3. Start the server (e.g. option 4), check it comes up, then stop it (option 13).
-          4. An automated smoke test (the bundled Java and tools run) will be added to this issue shortly.
+          2. Run \`${SNAP_NAME}\`. On a new install, a short setup walks you through it (the EULA, a server name, memory, who can play) and starts the server. If you used an older version, it first offers to move your world over.
+          3. Join from Minecraft at the address shown at the top of the menu.
+          4. Close the menu, log out, or restart the computer: the server should keep running, or come back by itself.
+          5. Try Players (\`p\`), Backups (\`b\`) and Settings (\`s\`).
+          6. An automated smoke test (the background service starts by itself; Java and the menu load) will be added to this issue shortly.
 
           ## How to release it
 
@@ -210,8 +212,8 @@ jobs:
           echo "issue-number=$(basename "$url")" >> "$GITHUB_OUTPUT"
 
   # A terminal app, so no screenshots: instead, install the candidate from
-  # the store on a clean runner and check the bundled tools the menu
-  # script depends on actually run inside the snap.
+  # the store on a clean runner and check that the background service
+  # started by itself and answers, and that Java and the menu load.
   smoke-test:
     needs: [publish-candidate, open-issue]
     runs-on: ubuntu-latest
@@ -229,17 +231,25 @@ jobs:
             sleep 30
           done
 
-      - name: Run the bundled tools inside the snap
+      - name: Check the background service, Java and the menu
         run: |
-          snap run --shell "${SNAP_NAME}" -c '
-            set -e
-            java="$(ls -d "$SNAP"/usr/lib/jvm/java-*/bin/java | head -1)"
-            "$java" -version 2>&1
-            "$SNAP"/usr/bin/jq --version
-            "$SNAP"/usr/bin/tmux -V
-            "$SNAP"/usr/bin/dialog --version
-            "$SNAP"/usr/bin/curl --version | head -1
-          ' 2>&1 | tee smoke.txt
+          for i in $(seq 1 30); do "${SNAP_NAME}".ctl status >/dev/null 2>&1 && break; sleep 2; done
+          {
+            echo "== The background service, started by itself at install:"
+            snap services "${SNAP_NAME}"
+            echo
+            echo "== It answers:"
+            "${SNAP_NAME}".ctl status | grep -E '"ok"|"running"|"you_may_change"'
+            echo
+            echo "== The bundled Java, and the menu with its library:"
+            snap run --shell "${SNAP_NAME}" -c '
+              set -e
+              java="$(ls -d "$SNAP"/usr/lib/jvm/java-*/bin/java | head -1)"
+              "$java" -version 2>&1 | head -1
+              PYTHONPATH="$SNAP/lib" "$SNAP/bin/python3" -c "import textual, mcsi.menu; print(\"menu loads with Textual\", textual.__version__)"
+            '
+          } 2>&1 | tee smoke.txt
+          snap services "${SNAP_NAME}" | grep -q " active "
 
       - name: Comment on the call for testing issue
         env:
@@ -250,7 +260,7 @@ jobs:
           gh issue comment "${ISSUE_NUMBER}" \
             --repo "${{ github.repository }}" \
             --body "$(cat <<EOF
-          Automated smoke test of revision ${REVISION}, installed fresh from the store: the bundled tools run inside the snap.
+          Automated smoke test of revision ${REVISION}, installed fresh from the store: the background service started by itself and answers, and Java and the menu load.
 
           \`\`\`
           $(cat smoke.txt)

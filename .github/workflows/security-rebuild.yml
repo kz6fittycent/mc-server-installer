@@ -242,7 +242,7 @@ jobs:
           sudo snap refresh ${SNAP_NAME} --channel latest/candidate
           \`\`\`
 
-          Run it, download the server jar, and make sure the server starts.
+          Open the menu, check the status says the server is running, and join it from Minecraft.
 
           ## How to release it
 
