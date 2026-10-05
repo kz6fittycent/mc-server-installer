@@ -1,111 +1,141 @@
 [![mc-server-installer](https://snapcraft.io//mc-server-installer/badge.svg)](https://snapcraft.io/mc-server-installer)[![🧪 Snap Builds](https://github.com/kz6fittycent/mc-server-installer/workflows/%F0%9F%A7%AA%20Snap%20Builds/badge.svg)](https://github.com/kz6fittycent/mc-server-installer/actions?query=workflow:"🧪+Snap+Builds")[![Periodic Builds and Scans](https://github.com/kz6fittycent/mc-server-installer/actions/workflows/periodic_builds.yml/badge.svg)](https://github.com/kz6fittycent/mc-server-installer/actions/workflows/periodic_builds.yml)
 
 #### If you like what I'm doing, please consider supporting me on Patreon!
-[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/kz6fittycent)  
+[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/kz6fittycent)
 
-# MC-Server-Installer
-A simple Snap package to download, configure, and run a Minecraft server via a Text User Interface (TUI). Built from scratch by [kz6fittycent](https://github.com/kz6fittycent) under the MIT License.
+# Minecraft Server Installer
 
-**Note**: This is not an officially supported or licensed application of Mojang. You must agree to the Minecraft End User License Agreement (EULA) to use this tool.
+Run your own **Minecraft: Java Edition** server at home, so the whole family can
+play together in one world. A short setup gets it going, and it keeps running in
+the background - close the window, log out, or restart the computer, and the
+server is still there.
 
-## Features
-- Download the latest Minecraft server JAR.
-- Agree to the EULA with a single step.
-- Configure `server.properties` using `nano`.
-- Run the server with preset or custom RAM settings.
-- Manage players live: whitelist, grant/remove operator status.
-- Backup your world and server files.
-- Runs in a detached `tmux` session for background operation.
+![The main menu: the server is running, two players are online, and the address to join is shown](docs/screenshots/main.png)
 
-## Installation
+Built from scratch by [kz6fittycent](https://github.com/kz6fittycent) under the MIT License.
+More help is in the [wiki](https://github.com/kz6fittycent/mc-server-installer/wiki).
 
-### Prerequisites
-- A Linux system with Snap support (e.g., Ubuntu, Fedora with Snap enabled).
-- Internet access to download the server JAR.
+**Note:** this is not an official Minecraft product, and is not approved by or
+associated with Mojang or Microsoft. You must agree to the
+[Minecraft EULA](https://aka.ms/MinecraftEULA) to run a server.
 
-### Install via Snap
+## Install
+
 ```
 sudo snap install mc-server-installer
-sudo snap connect mc-server-installer:process-control
 ```
-- `process-control`: Required for the snap to stop the server effectively.
 
+Then open a terminal and run:
 
-### Source
-Grab the source from [GitHub](https://github.com/kz6fittycent/mc-server-installer) to build or modify it yourself.
+```
+mc-server-installer
+```
 
-## Usage
+## First run
 
-1. **Launch the TUI**:
-   ```
-   mc-server-installer
-   ```
-   The TUI uses `dialog` to present a menu-driven interface.
-   
-   NOTE: Optionally, open a `screen` session to keep the snap running indefinitely (for more info about `screen` see: https://linuxize.com/post/how-to-use-linux-screen/). 
+The first time, a short setup asks a few questions - a name for your server, how
+much memory it may use (it suggests an amount for your computer), and who may
+play - then downloads Minecraft and starts the server.
 
-2. **First-Time Setup**:
-   - Select **Option 1**: Download the latest server JAR (e.g., v1.20.4).
-   - Select **Option 2**: Agree to the EULA (required once; generates `eula.txt`).
+![Setup asks for everyone's Minecraft name; the first becomes the operator](docs/screenshots/setup-players.png)
 
-3. **Main Menu Options**:
-   ```
-   MINECRAFT SERVER INSTALLER MENU
-   Installed version: <version>
-   Select from the following options:
-    1) Download latest (v<latest>) server.jar
-    2) Agree to the EULA
-    3) Edit the server.properties file
-    4) Run MC server with max 2GB of RAM
-    5) Run MC server with max 4GB of RAM
-    6) Run MC server with max 6GB of RAM
-    7) Run MC server with max 8GB of RAM
-    8) Run MC server with max 16GB of RAM
-    9) View README
-   10) Back up your world
-   11) Run custom RAM settings
-   12) Run custom jar file and RAM settings
-   13) Stop the server
-   14) Add player to whitelist (live)
-   15) Make player an operator (live)
-   16) Remove player from operators (live)
-   17) Add player to whitelist (offline)
-   ```
-   - Use arrow keys to navigate, **Enter** to select, or **Quit** to exit.
+When it is done, it shows the address to use. On every computer that should
+play: open Minecraft, choose **Multiplayer**, then **Add Server**, and type that
+address.
 
-4. **Running the Server**:
-   - Choose a run option (4–8, 11–12) to start the server in a `tmux` session.
-   - Check `$HOME/snap/mc-server-installer/current/server.log` for output.
+## It keeps running
 
-5. **Live Management**:
-   - **Option 14**: Add a player to the whitelist while the server runs.
-   - **Option 15**: Grant operator status to a player.
-   - **Option 16**: Remove operator status from a player.
-   - Commands are sent instantly; verify in `server.log`.
+The server runs in the background, looked after by your computer:
 
-6. **Offline Whitelist**:
-   - **Option 17**: Add a player to `whitelist.json` when the server is stopped.
-   - Enable `white-list=true` in `server.properties` to enforce it.
+- Close the menu (press **q**) whenever you like. The server keeps running.
+- Log out, or lose your SSH connection: the server keeps running.
+- Restart the computer: the server comes back by itself, if it was running
+  (you can turn this off in Settings).
+- When the snap updates itself, the server stops cleanly - the world is saved
+  first - and comes straight back.
 
-7. **Stopping the Server**:
-   - **Option 13**: Sends the `stop` command and cleans up the `tmux` session.
+## Everyday use
 
-8. **Configuration**:
-   - **Option 3**: Edit `server.properties` in `$HOME/snap/mc-server-installer/current`.
-   - Customize ports, difficulty, etc., as needed.
+| Key | Does what |
+| --- | --- |
+| **p** | **Players**: who may join, who is an operator, who is playing now |
+| **b** | **Backups**: back up now, restore, or copy a backup to your Home folder |
+| **s** | **Settings**: server name, memory, whitelist, start with the computer |
+| **c** | **Console**: the server's live log, and a box for server commands such as `say Dinner time!` |
+| **u** | **Update**: shown when a new Minecraft is out |
+| **?** | Help |
+| **q** | Quit the menu - the server keeps running |
 
-9. **Backup**:
-   - **Option 10**: Creates a `.tar.gz` backup in `$HOME`.
+The numbered options 1 to 17 are the same as in earlier versions, in the same
+order. Type the number (for two digits, type them quickly: **1** then **3**
+for 13) or click.
 
-## Notes
-- **Server Files**: Stored in `$HOME/snap/mc-server-installer/current`.
-- **Updates**: Re-run Option 1 to download a new JAR; no EULA re-agreement needed unless the Snap is removed.
-- **Custom RAM**: For Option 11, enter values like `4096M` (4GB). See [Minecraft Server Requirements](https://minecraft.gamepedia.com/Server/Requirements).
-- **Custom JAR**: For Option 12, provide the full path (e.g., `$HOME/snap/mc-installer/current/custom.jar`).
+![Players](docs/screenshots/players.png)
+
+### Backups
+
+- **Daily**, while the server runs. The newest 7 are kept.
+- **Before every update and every restore**, automatically.
+- **Whenever you like**: option 10, or **Back up now** in Backups. These are
+  never deleted automatically, and a copy is put in your Home folder.
+
+Restoring a backup first backs up the world as it is now, so you can always go
+back.
+
+![Backups](docs/screenshots/backups.png)
+
+### Minecraft updates
+
+Players' Minecraft updates itself, and an older server then turns them away.
+When a new version is out, the top of the menu says so. Press **u**: the world is
+backed up, the server updates and restarts. Settings can go back to the previous
+version.
+
+### Settings
+
+![Settings](docs/screenshots/settings.png)
+
+## Who can change the server
+
+The person who sets the server up on a computer is its owner. Other people on
+that computer can open the menu and see how the server is doing, but only the
+owner can start, stop or change it. To hand it over to someone else:
+
+```
+sudo mc-server-installer.ctl set-owner user=THEIR_LOGIN_NAME
+```
+
+## Moving from an older version
+
+Your world comes with you. The first time you open the menu after updating, it
+offers to move your world, whitelist, operators and settings over to the new
+background server. The original files stay where they were, as a backup.
+
+## Playing with friends outside your home
+
+The server is reachable by anyone on your home network. To let friends join over
+the internet, forward **TCP port 25565** on your router to this computer, and
+give them your public IP address. Keep the whitelist on, so only the players you
+added can join. (A guided setup for this is planned for a later version.)
+
+## Where things are
+
+- The server's files: `/var/snap/mc-server-installer/common/server`
+- Backups: `/var/snap/mc-server-installer/common/backups`
+- The background service's log: `sudo snap logs mc-server-installer.service`
 
 ## Troubleshooting
-- **"Server must be running" Error**: Ensure you’ve started the server (Options 4–8, 11–12) before using live commands (14–16).
-- **No Output**: Check `server.log` in `$HOME/snap/mc-server-installer/current`.
+
+- **"The background service is not running"**: run
+  `sudo snap restart mc-server-installer`, then open the menu again.
+- **Players can't join**: check that their Minecraft version matches the server's
+  (the top of the menu), that they typed the address shown there, and that they
+  are on the whitelist (press **p**).
+- **The server stopped twice by itself**: the menu shows why. Press **c** to read
+  the end of the server's log.
 
 ## Contributing
-Fork the repo, make changes, and submit a pull request on [GitHub](https://github.com/kz6fittycent/mc-server-installer). Issues and suggestions welcome!
+
+Fork the repo, make changes, and submit a pull request on
+[GitHub](https://github.com/kz6fittycent/mc-server-installer). Issues and
+suggestions welcome!

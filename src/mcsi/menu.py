@@ -467,11 +467,13 @@ class Players(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Static("Asking the server…", id="players-text")
+            # Two rows, so every button fits an 80-column terminal.
             with Horizontal(classes="buttons"):
-                yield Button("Add", variant="primary", id="whitelist")
-                yield Button("Remove", id="unwhitelist")
+                yield Button("Add player", variant="primary", id="whitelist")
+                yield Button("Remove player", id="unwhitelist")
+            with Horizontal(classes="buttons"):
                 yield Button("Make operator", id="op")
-                yield Button("Not operator", id="deop")
+                yield Button("Remove operator", id="deop")
                 yield Button("Close", id="close")
 
     def on_mount(self):
@@ -530,7 +532,7 @@ class Backups(ModalScreen[None]):
             with Horizontal(classes="buttons"):
                 yield Button("Back up now", variant="primary", id="backup")
                 yield Button("Restore", id="restore")
-                yield Button("Copy to Home folder", id="copy")
+                yield Button("Copy to Home", id="copy")
                 yield Button("Close", id="close")
 
     def on_mount(self):
@@ -611,21 +613,24 @@ class Settings(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         s = self.status
-        with Vertical(classes="dialog"):
+        # The form scrolls and the buttons stay put, so Save is reachable even
+        # in an 80x24 terminal.
+        with Vertical(classes="dialog tall"):
             yield Static("[b]Settings[/]")
-            yield Label("Server name (shown in Minecraft's server list)")
-            yield Input(s.get("motd") or "", id="motd")
-            yield Label("Memory for the server, for example 4G")
-            yield Input(memory_label(s["ram_mb"]).replace(" ", ""), id="memory")
-            with Horizontal(classes="switch-row"):
-                yield Switch(s["white_list_on"], id="white_list")
-                yield Label("Only allowed players can join (whitelist)")
-            with Horizontal(classes="switch-row"):
-                yield Switch(s["autostart"], id="autostart")
-                yield Label("Start the server when the computer starts, if it was running")
-            if s.get("can_roll_back"):
-                yield Button(f"Go back to Minecraft {s.get('previous_version') or 'previous version'}",
-                             id="rollback")
+            with VerticalScroll(classes="form"):
+                yield Label("Server name (shown in Minecraft's server list)")
+                yield Input(s.get("motd") or "", id="motd")
+                yield Label("Memory for the server, for example 4G")
+                yield Input(memory_label(s["ram_mb"]).replace(" ", ""), id="memory")
+                with Horizontal(classes="switch-row"):
+                    yield Switch(s["white_list_on"], id="white_list")
+                    yield Label("Only allowed players can join (whitelist)")
+                with Horizontal(classes="switch-row"):
+                    yield Switch(s["autostart"], id="autostart")
+                    yield Label("Start the server when the computer starts")
+                if s.get("can_roll_back"):
+                    yield Button(f"Go back to Minecraft {s.get('previous_version') or 'previous version'}",
+                                 id="rollback")
             with Horizontal(classes="buttons"):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Close", id="close")
@@ -660,19 +665,23 @@ class Settings(ModalScreen[None]):
 
 class Menu(App):
     TITLE = "Minecraft Server Installer"
+    ENABLE_COMMAND_PALETTE = False  # one less thing for beginners to wonder about
     CSS = """
     #status { padding: 1 2; border: round $accent; height: auto; }
     #menu { height: 1fr; margin: 0 1; }
     #hint { padding: 0 2; color: $text-muted; }
-    .dialog { width: 72; height: auto; max-height: 90%; padding: 1 2;
+    .dialog { width: 72; max-width: 96%; height: auto; max-height: 90%; padding: 1 2;
               border: thick $accent; background: $surface; }
     .dialog.wide { width: 100; height: 90%; }
+    .dialog.tall { height: 90%; }
+    .dialog.tall .form { height: 1fr; }
     .dialog TextArea { height: 1fr; }
     .dialog VerticalScroll { height: 1fr; }
     .buttons { height: auto; margin-top: 1; align-horizontal: right; }
-    .buttons Button { margin-left: 2; }
+    .buttons Button { margin-left: 1; }
     Confirm, Ask, Properties, Help, Players, Backups, Settings { align: center middle; }
-    .setup { width: 80; height: auto; margin: 2 4; padding: 1 2; border: round $accent; }
+    .setup { width: 100%; max-width: 80; height: auto; margin: 1 2; padding: 1 2;
+             border: round $accent; }
     .setup Input { margin-top: 1; }
     .switch-row { height: auto; margin-top: 1; }
     .switch-row Label { padding: 1 1; }

@@ -1,16 +1,35 @@
 name: mc-server-installer
 adopt-info: mc-server-installer
-summary: Minecraft Server Downloader and Installer/Configuration Tool
+title: Minecraft Server Installer
+summary: Run your own Minecraft Java Edition server at home, for the whole family
 description: |
-    A Minecraft Server installer and configuration snap that downloads the latest .jar file 
-    and allows you to start your server with the amount of RAM you choose. 
-    
-    Admins may now run custom MAX RAM settings! Minimum RAM requirements are 1024M, so please
-    keep this in mind. Additionally, -Xmn values have been reduced to 128M to keep with current
-    guidance. See: https://minecraft.gamepedia.com/Server/Requirements 
-    
-    You can also backup your entire server with option 10 in the menu. They are pushed to
-    /home/user/ so that uninstalling the snap won't affect your backups. 
+  Set up a Minecraft: Java Edition server on your own computer in a couple of
+  minutes, so your family can play together in one world.
+
+  Run `mc-server-installer` in a terminal. A short setup asks for a server name,
+  how much memory to use and who may play, then downloads Minecraft and starts
+  the server. It shows the address to type into Minecraft.
+
+  The server runs in the background: close the window, log out, or restart the
+  computer, and it keeps going (or comes back by itself).
+
+  - Only the players you add can join (whitelist), and their accounts are checked
+    with Mojang.
+  - Daily backups while the server runs (the newest 7 are kept), plus a backup
+    before every update or restore. Restore any of them from the menu.
+  - Tells you when a new Minecraft is out, and updates in one step, with the
+    option to go back.
+  - Players, operators, settings and a live server console, all from the menu.
+  - Only the person who set the server up can change it; others on the computer
+    can see how it is doing.
+  - The server runs as an unprivileged user, and the only open port is the game's
+    (25565).
+
+  Moving from an older version? The first time you open the menu it offers to
+  bring your world, whitelist and operators over. The original stays where it was.
+
+  Not an official Minecraft product. Not approved by or associated with Mojang or
+  Microsoft. You must agree to the Minecraft EULA (https://aka.ms/MinecraftEULA).
 
 website: https://minecraft.net
 contact: https://github.com/kz6fittycent/mc-server-installer/issues
