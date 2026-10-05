@@ -40,15 +40,20 @@ apps:
 
 parts:
   mc-server-installer:
-    source: https://github.com/kz6fittycent/mc-server-installer
-    source-type: git
+    # The checked-out commit, not a fresh clone of GitHub's master: the
+    # security rebuild workflow rebuilds the exact commit stable came from.
+    source: .
     plugin: nil
     
     override-pull: |
       craftctl default
-      craftctl set version="$(git describe --tags | sed 's/^v//' | cut -d "-" -f1)"
+      # --match 'v*': the snap-rev-<revision> tags the CI workflows push
+      # must not become the version. -C: parts/ isn't inside the repo
+      # when building in LXD (snapcore/action-build).
+      craftctl set version="$(git -C "$CRAFT_PROJECT_DIR" describe --tags --match 'v*' | sed 's/^v//' | cut -d "-" -f1)"
 
     build-packages:
+      - git  # for the version (override-pull)
       - openjdk-25-jre-headless
             
     stage-packages:
