@@ -132,7 +132,7 @@ class State:
         self.data = {"desired": "stopped", "ram_mb": DEFAULT_RAM_MB, "version": None,
                      "jar": "server.jar", "owner_uid": None, "migrated": False,
                      "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
-                     "previous_version": None, "pinned": False}
+                     "previous_version": None, "pinned": False, "main_level": None}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -406,6 +406,7 @@ class Server:
                  "autostart": self.state["autostart"], "update_available": self.update_available(),
                  "previous_version": self.state["previous_version"],
                  "pinned": self.state.get("pinned", False), "latest": self.state["latest"],
+                 "level": props.get("level-name") or "world",
                  "can_roll_back": os.path.exists(os.path.join(SERVER_DIR, "server.jar.previous"))}
         backups = self.backups()
         reply["last_backup"] = backups[0]["time"] if backups else None
@@ -428,7 +429,7 @@ class Server:
         except FileNotFoundError:
             return {"ok": True, "lines": [], "seq": 0}
 
-    async def download(self, version=None):
+    async def download(self, version=None, world=None):
         """The latest server, or a chosen version (option 18).
 
         A chosen version that is not the latest is "pinned": no update alerts
@@ -439,10 +440,13 @@ class Server:
         wanted = None if version in (None, "") else str(version).strip()
         if wanted is not None and not VERSION_NAME.match(wanted):
             raise Refused("Type a version like 26.2.")
+        if world not in (None, "keep", "new"):
+            raise Refused("Choose a new world or your current one.")
         version, url, sha1 = await asyncio.to_thread(server_download, wanted)
         latest = version if wanted is None else (await asyncio.to_thread(server_download))[0]
-        switching = wanted is not None and (version != self.state["version"]
-                                            or self.state["jar"] != "server.jar")
+        switching = ((wanted is not None and (version != self.state["version"]
+                                              or self.state["jar"] != "server.jar"))
+                     or (wanted is None and bool(self.state.get("main_level"))))
         restart = False
         if switching:
             if self.has_world():
@@ -460,13 +464,37 @@ class Server:
         pinned = version != latest
         self.state.update(version=version, jar="server.jar", latest=latest,
                           latest_checked=time.time(), pinned=pinned)
+        world_note = self.switch_world(version, world if wanted is not None else None,
+                                       back_to_latest=wanted is None)
         log(f"downloaded server {version}" + (" (chosen; pinned)" if pinned else ""))
         if restart:
             await self.start()
             note = "The server is restarting with it."
         else:
             note = "It is used the next time the server starts." if self.running else None
+        note = " ".join(n for n in (world_note, note) if n) or None
         return {"ok": True, "version": version, "note": note, "pinned": pinned}
+
+    def switch_world(self, version, world, back_to_latest):
+        """level-name for option 18's "new world", and back again with the latest.
+
+        A new world for an older version lives in its own folder, so the
+        current one (played on a newer version) is set aside untouched;
+        going back to the latest version switches back to it.
+        """
+        current = self.level_name()
+        if world == "new":
+            main = self.state.get("main_level") or current
+            level = "world-" + re.sub(r"[^A-Za-z0-9._-]", "-", version)
+            self.set_properties({"level-name": level})
+            self.state.update(main_level=main)
+            return f"New world \"{level}\"; your world \"{main}\" is kept for later."
+        if back_to_latest and self.state.get("main_level") and current != self.state["main_level"]:
+            main = self.state["main_level"]
+            self.set_properties({"level-name": main})
+            self.state.update(main_level=None)
+            return f"Back to your world \"{main}\"; the \"{current}\" world is kept too."
+        return None
 
     async def command(self, text):
         if not self.running:
@@ -641,6 +669,27 @@ class Server:
         if was_running:
             await self.start()
         return {"ok": True, "version": self.state["version"]}
+
+    def level_name(self):
+        return self.properties().get("level-name") or "world"
+
+    def has_current_world(self):
+        return os.path.isfile(os.path.join(SERVER_DIR, self.level_name(), "level.dat"))
+
+    async def version_check(self, version):
+        """Before option 18 switches: does that version exist, and would it be older than the world?"""
+        version = str(version or "").strip()
+        if not VERSION_NAME.match(version):
+            raise Refused("Type a version like 26.2.")
+        version = (await asyncio.to_thread(server_download, version))[0]  # refuses unknown ones
+        world = self.has_current_world()
+        older = False
+        if world:
+            chosen, played = await asyncio.to_thread(release_times, version, self.state["version"])
+            # A world from an unknown version (moved over from 14.x) counts as possibly newer.
+            older = played is None or (chosen is not None and chosen < played)
+        return {"ok": True, "version": version, "has_world": world, "older_than_world": older,
+                "world_version": self.state["version"], "level": self.level_name()}
 
     def has_world(self):
         return any(os.path.isfile(os.path.join(SERVER_DIR, d, "level.dat"))
@@ -839,15 +888,25 @@ def lan_address():
         return None
 
 
+def manifest():
+    with urllib.request.urlopen(MANIFEST_URL, timeout=20) as r:
+        return json.load(r)
+
+
+def release_times(*versions):
+    """When each version came out (ISO time strings, which sort by date); None if unknown."""
+    by_id = {v["id"]: v["releaseTime"] for v in manifest()["versions"]}
+    return [by_id.get(v) for v in versions]
+
+
 def server_download(wanted=None):
     """(version, url, sha1) of a server jar from Mojang's list: the latest release, or `wanted`."""
-    with urllib.request.urlopen(MANIFEST_URL, timeout=20) as r:
-        manifest = json.load(r)
-    version = wanted or manifest["latest"]["release"]
-    entry = next((v for v in manifest["versions"] if v["id"] == version), None)
+    manifest_data = manifest()
+    version = wanted or manifest_data["latest"]["release"]
+    entry = next((v for v in manifest_data["versions"] if v["id"] == version), None)
     if entry is None:
         raise Refused(f"There is no Minecraft version called {version}. "
-                      f"Versions look like {manifest['latest']['release']}.")
+                      f"Versions look like {manifest_data['latest']['release']}.")
     with urllib.request.urlopen(entry["url"], timeout=20) as r:
         details = json.load(r)
     server = details.get("downloads", {}).get("server")
@@ -979,7 +1038,9 @@ async def main():
             elif name == "log":
                 reply = server.console_log(int(request.get("since", 0)))
             elif name == "download":
-                reply = await server.download(request.get("version"))
+                reply = await server.download(request.get("version"), request.get("world"))
+            elif name == "version-check":
+                reply = await server.version_check(request.get("version"))
             elif name == "accept-eula":
                 ensure_server_dir()
                 write_file(os.path.join(SERVER_DIR, "eula.txt"),

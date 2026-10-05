@@ -156,8 +156,9 @@ def status_text(s):
     if not s["you_may_change"]:
         lines.append(f"[yellow]You can watch this server; only {s['owner']} can change it.[/]")
     if s.get("pinned") and s.get("latest") and s.get("version") != s.get("latest"):
-        lines.append(f"[dim]You chose Minecraft {s['version']}. Minecraft {s['latest']} is the "
-                     "latest: press 1 to switch to it.[/]")
+        world = f" (world \"{s['level']}\")" if s.get("level", "world") != "world" else ""
+        lines.append(f"[dim]You chose Minecraft {s['version']}{world}. Minecraft {s['latest']} is "
+                     "the latest: press 1 to switch to it.[/]")
     if s.get("update_available"):
         lines.append(f"[b cyan]Minecraft {s['update_available']} is available.[/] "
                      "Press [b]u[/] to update (your world is backed up first).")
@@ -187,6 +188,33 @@ class Confirm(ModalScreen[bool]):
 
     def key_escape(self):
         self.dismiss(False)
+
+
+class Choose(ModalScreen[str | None]):
+    """A question with a few labelled answers; dismisses with the chosen id (or None)."""
+
+    def __init__(self, message, choices):
+        super().__init__()
+        self.message, self.choices = message, choices  # [(id, label, primary?)]
+
+    def compose(self) -> ComposeResult:
+        # The message scrolls and the answers stay visible, even in 80x24.
+        with Vertical(classes="dialog tall"):
+            with VerticalScroll(classes="form"):
+                yield Static(self.message)
+            for choice_id, label, primary in self.choices:
+                yield Button(label, variant="primary" if primary else "default", id=choice_id,
+                             classes="choice")
+            yield Button("Cancel", id="cancel", classes="choice")
+
+    def on_mount(self):
+        self.query_one(Button).focus()
+
+    def on_button_pressed(self, event):
+        self.dismiss(None if event.button.id == "cancel" else event.button.id)
+
+    def key_escape(self):
+        self.dismiss(None)
 
 
 class Ask(ModalScreen[str | None]):
@@ -695,7 +723,8 @@ class Menu(App):
     .dialog VerticalScroll { height: 1fr; }
     .buttons { height: auto; margin-top: 1; align-horizontal: right; }
     .buttons Button { margin-left: 1; }
-    Confirm, Ask, Properties, Help, Players, Backups, Settings { align: center middle; }
+    Confirm, Ask, Choose, Properties, Help, Players, Backups, Settings { align: center middle; }
+    .choice { width: 100%; margin-top: 1; }
     .setup { width: 100%; max-width: 80; height: auto; margin: 1 2; padding: 1 2;
              border: round $accent; }
     .setup Input { margin-top: 1; }
@@ -854,22 +883,41 @@ class Menu(App):
             self.push_screen(Ask("Which operator should go back to being a normal player?"),
                              lambda name: name and self.player("deop", name))
 
+    @work(thread=True)
     def choose_version(self, version):
+        """Option 18: check the version, then ask how to treat the world if it is at risk."""
         if not version:
             return
-        self.push_screen(Confirm(
-            f"Switch the server to Minecraft [b]{version}[/]?\n\n"
-            "• Everyone's Minecraft must be the same version to join. In the Minecraft "
-            f"Launcher: Installations → New installation → Version {version}.\n"
-            "• A world played on a newer version may not open in an older one. Your world "
-            "is backed up first, so you can go back (Backups, b).\n"
-            "• If the server is running, it restarts.\n\n"
-            "You won't be nagged to update while you're on a version you chose. Option 1 "
-            "goes back to the latest.", yes="Switch"),
-            lambda yes: yes and self.ask_service(
-                "download", f"Backing up and getting Minecraft {version}…",
-                lambda r: f"Now on Minecraft {r['version']}. " + (r.get("note") or ""),
-                version=version))
+        try:
+            check = client.request("version-check", version=version)
+        except client.ServiceError as error:
+            self.call_from_thread(self.notify, str(error), severity="error", timeout=10)
+            return
+        version = check["version"]
+        players_note = (f"Everyone's Minecraft must be version {version} to join. In the Minecraft "
+                        f"Launcher: Installations → New installation → Version {version}.")
+        if check["has_world"] and check["older_than_world"]:
+            played = check["world_version"] or "a newer version"
+            self.call_from_thread(self.push_screen, Choose(
+                f"[b]Minecraft {version} is older than the version your world was last played "
+                f"on ({played}).[/]\n\nOpening a world in an older version damages it: things "
+                "like chests and furnaces can lose what is in them, and parts of the world can be "
+                "lost. Going back to the newer version does not repair it.\n\n"
+                f"{players_note}\n\nYour world is backed up first either way.",
+                [("new", f"Start a new world for {version} (your world is kept for later)", True),
+                 ("keep", "Use my world anyway", False)]),
+                lambda world: world and self.switch_version(version, world))
+        else:
+            self.call_from_thread(self.push_screen, Confirm(
+                f"Switch the server to Minecraft [b]{version}[/]?\n\n{players_note}\n\n"
+                "If the server is running, it restarts. You won't be nagged to update while "
+                "you're on a version you chose; option 1 goes back to the latest.", yes="Switch"),
+                lambda yes: yes and self.switch_version(version, None))
+
+    def switch_version(self, version, world):
+        self.ask_service("download", f"Backing up and getting Minecraft {version}…",
+                         lambda r: f"Now on Minecraft {r['version']}. " + (r.get("note") or ""),
+                         version=version, **({"world": world} if world else {}))
 
     def start(self, ram_mb):
         self.ask_service("start", "Starting the server…",

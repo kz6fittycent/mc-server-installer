@@ -67,9 +67,10 @@ The server runs in the background, looked after by your computer:
 | **?** | Help |
 | **q** | Quit the menu - the server keeps running |
 
-The numbered options 1 to 17 are the same as in earlier versions, in the same
-order. Type the number (for two digits, type them quickly: **1** then **3**
-for 13) or click.
+The numbered options 1 to 16 are the same as in earlier versions, in the same
+order; 17 removes a player from the whitelist, and 18 chooses a Minecraft
+version (see below). Type the number (for two digits, type them quickly: **1**
+then **3** for 13) or click.
 
 ![Players](docs/screenshots/players.png)
 
@@ -91,6 +92,20 @@ Players' Minecraft updates itself, and an older server then turns them away.
 When a new version is out, the top of the menu says so. Press **u**: the world is
 backed up, the server updates and restarts. Settings can go back to the previous
 version.
+
+### Choosing a Minecraft version
+
+If the latest Minecraft has a problem, option **18** ("Specify server version")
+switches the server to another version, for example `26.2`. Everyone's game must
+then use the same version: in the Minecraft Launcher, choose **Installations →
+New installation** and pick that version.
+
+Going back to an **older** version than your world was last played on can damage
+the world (chests and furnaces can lose what is in them, and parts of the world
+can be lost), so the menu asks first: start a **new world** for that version -
+your world is kept for later - or use your world anyway. Your world is backed up
+first either way. While you're on a version you chose, the menu doesn't push
+updates; option **1** goes back to the latest, and to your original world.
 
 ### Settings
 
