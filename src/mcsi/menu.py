@@ -11,6 +11,7 @@ number is typed quickly (1 then 3 for 13).
 """
 
 import os
+import re
 import shutil
 import time
 
@@ -19,13 +20,14 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import (Button, Footer, Header, Input, Markdown, OptionList,
-                             RichLog, Static, TextArea)
+from textual.widgets import (Button, Footer, Header, Input, Label, Markdown, OptionList,
+                             RichLog, Static, Switch, TextArea)
 from textual.widgets.option_list import Option
 
 from mcsi import client, migrate
 
 REAL_HOME = os.environ.get("SNAP_REAL_HOME", os.path.expanduser("~"))
+PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")  # the same rule as the service
 EULA_URL = "https://aka.ms/MinecraftEULA"
 
 OPTIONS = {
@@ -71,8 +73,15 @@ was running before.
 - **Who can play:** add your family with option 14. Turn on
   `white-list=true` in the settings (option 3) so only they can join.
 - **Operators** (option 15) can use cheats and server commands in the game.
-- **Backups:** option 10 saves a copy of your world, and puts one in your
-  Home folder too.
+- **Backups** (press **b**): daily while the server runs (the newest 7 are
+  kept), before every update and restore, and whenever you choose option 10,
+  which also puts a copy in your Home folder. Restore any of them from here.
+- **Players** (press **p**) and **Settings** (press **s**): who can join,
+  operators, the server name, memory, and whether the server starts with
+  the computer.
+- **Updates:** when a new Minecraft comes out, the top of this window says
+  so. Press **u**: your world is backed up, then the server updates and
+  restarts. Settings can go back to the previous version.
 - **Console** (press **c**): the server's live log, and a box for server
   commands such as `say Dinner time!`.
 - **Only the person who set up the server can change it.** Other people on
@@ -138,6 +147,11 @@ def status_text(s):
         lines.append(f"Join from Minecraft at: [b]{s['address']}{port}[/]")
     if not s["you_may_change"]:
         lines.append(f"[yellow]You can watch this server; only {s['owner']} can change it.[/]")
+    if s.get("update_available"):
+        lines.append(f"[b cyan]Minecraft {s['update_available']} is available.[/] "
+                     "Press [b]u[/] to update (your world is backed up first).")
+    if s.get("last_backup"):
+        lines.append(f"Last backup: {when(s['last_backup'])}")
     if s.get("problem"):
         lines.append(f"[b red]{s['problem']}[/]")
     return "\n".join(lines)
@@ -275,6 +289,373 @@ class Console(Screen):
             self.app.call_from_thread(self.app.notify, str(error), severity="error")
 
 
+# --- phase 3 screens --------------------------------------------------------
+
+def suggested_memory():
+    """A memory amount for the server from this computer's RAM, and why."""
+    try:
+        with open("/proc/meminfo") as f:
+            total_mb = int(next(l for l in f if l.startswith("MemTotal")).split()[1]) // 1024
+    except (OSError, StopIteration, ValueError):
+        return 2048, "a safe amount for a few players"
+    # MemTotal reads a little under the installed size (a "4 GB" machine shows ~3.8 GB).
+    for limit, suggest in ((3072, 1024), (6144, 2048), (12288, 3072), (24576, 4096)):
+        if total_mb <= limit:
+            break
+    else:
+        suggest = 6144
+    return suggest, (f"this computer has {round(total_mb / 1024)} GB, and leaving the rest "
+                     "free keeps it running smoothly")
+
+
+def when(timestamp):
+    return time.strftime("%d %b, %H:%M", time.localtime(timestamp))
+
+
+class Setup(Screen):
+    """First run: one question per step, then download, start, and how to join."""
+
+    BINDINGS = [Binding("escape", "app.pop_screen", "Leave setup for now")]
+    STEPS = ("welcome", "eula", "name", "memory", "players", "ready", "working", "done")
+
+    def __init__(self, status):
+        super().__init__()
+        self.status = status
+        self.step = 0
+        self.answers = {}
+        self.memory, self.memory_reason = suggested_memory()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(classes="setup"):
+            yield Static(id="step-text")
+            yield Input(id="step-input")
+            with Horizontal(classes="buttons"):
+                yield Button("Next", variant="primary", id="next")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_mount(self):
+        self.show()
+
+    def show(self):
+        name = self.STEPS[self.step]
+        text = self.query_one("#step-text", Static)
+        field = self.query_one("#step-input", Input)
+        next_button = self.query_one("#next", Button)
+        back_button = self.query_one("#back", Button)
+        field.display = name in ("name", "memory", "players")
+        back_button.display = name not in ("welcome", "working", "done")
+        next_button.display = name != "working"
+        next_button.label = {"eula": "I agree", "ready": "Set it up", "done": "Go to the menu"}.get(name, "Next")
+        if name == "welcome":
+            text.update("[b]Welcome![/]\n\nThis sets up a Minecraft server on this computer, so your "
+                        "family can play together in one world.\n\nIt takes about two minutes. The "
+                        "server then runs in the background: you can close this window, and it keeps "
+                        "going.")
+        elif name == "eula":
+            text.update("[b]The Minecraft EULA[/]\n\nTo run a Minecraft server you must agree to the "
+                        f"Minecraft End User License Agreement:\n\n  {EULA_URL}\n\nOpen that link in a "
+                        "web browser and read it. Press [b]I agree[/] if you agree to it.")
+        elif name == "name":
+            text.update("[b]Name your server[/]\n\nThis is what your family sees in their Minecraft "
+                        "server list.")
+            field.value = self.answers.get("motd", f"{self.status['you']}'s Minecraft server")[:59]
+        elif name == "memory":
+            text.update(f"[b]Memory[/]\n\nWe suggest [b]{memory_label(self.memory)}[/]: "
+                        f"{self.memory_reason}. You can change this later in Settings.")
+            field.value = self.answers.get("memory", memory_label(self.memory).replace(" ", ""))
+            field.placeholder = "for example 2G or 4096M"
+        elif name == "players":
+            text.update("[b]Who can play?[/]\n\nType everyone's Minecraft name, separated by commas. "
+                        "Only these players can join. The [b]first name[/] becomes the operator, who "
+                        "can use cheats and server commands in the game.")
+            field.value = self.answers.get("players", "")
+            field.placeholder = "for example Steve, Alex"
+        elif name == "ready":
+            players = ", ".join(self.answers["names"])
+            text.update(f"[b]Ready[/]\n\nServer name: {self.answers['motd']}\nMemory: "
+                        f"{memory_label(self.answers['ram_mb'])}\nPlayers: {players} "
+                        f"(operator: {self.answers['names'][0]})\n\nThis downloads the latest "
+                        "Minecraft server and starts it.")
+        if field.display:
+            field.focus()
+        else:
+            next_button.focus()
+
+    def on_input_submitted(self, event):
+        self.next()
+
+    def on_button_pressed(self, event):
+        if event.button.id == "back":
+            self.step -= 1
+            self.show()
+        else:
+            self.next()
+
+    def next(self):
+        name = self.STEPS[self.step]
+        value = self.query_one("#step-input", Input).value.strip()
+        if name == "done":
+            self.app.pop_screen()
+            return
+        if name == "name":
+            if not value or len(value) > 59:
+                self.notify("Type a name of up to 59 characters.", severity="error")
+                return
+            self.answers["motd"] = value
+        elif name == "memory":
+            ram_mb = parse_memory(value)
+            if not ram_mb or ram_mb < 1024:
+                self.notify("Type an amount like 2G or 4096M (at least 1G).", severity="error")
+                return
+            self.answers.update(memory=value, ram_mb=ram_mb)
+        elif name == "players":
+            names = [n.strip() for n in value.split(",") if n.strip()]
+            bad = [n for n in names if not PLAYER_NAME.match(n)]
+            if not names or bad:
+                self.notify("Type at least one Minecraft name. Names are 3 to 16 letters, "
+                            "digits or underscores." + (f" Not valid: {', '.join(bad)}" if bad else ""),
+                            severity="error", timeout=8)
+                return
+            self.answers.update(players=value, names=names)
+        self.step += 1
+        self.show()
+        if self.STEPS[self.step] == "working":
+            self.set_up()
+
+    @work(thread=True)
+    def set_up(self):
+        lines = []
+
+        def say(line):
+            lines.append(line)
+            self.app.call_from_thread(self.query_one("#step-text", Static).update,
+                                      "[b]Setting up…[/]\n\n" + "\n".join(lines))
+        a = self.answers
+        try:
+            client.request("accept-eula"); say("✓ Agreed to the Minecraft EULA")
+            client.request("settings", motd=a["motd"], white_list=True, ram_mb=a["ram_mb"])
+            say("✓ Saved the server name and memory; only your players can join")
+            for number, player in enumerate(a["names"]):
+                client.request("whitelist", name=player)
+                if number == 0:
+                    client.request("op", name=player)
+                say(f"✓ {player} can play" + (" (operator)" if number == 0 else ""))
+            say("… Downloading the Minecraft server")
+            version = client.request("download")["version"]
+            say(f"✓ Downloaded Minecraft {version}")
+            client.request("start", ram_mb=a["ram_mb"]); say("✓ Started the server")
+        except client.ServiceError as error:
+            say(f"[b red]✗ {error}[/]\n\nPress Escape to go to the menu; you can carry on from there.")
+            return
+        status = client.request("status")
+        port = "" if status["port"] == 25565 else f":{status['port']}"
+        self.app.call_from_thread(self.finish, status.get("address"), port)
+
+    def finish(self, address, port):
+        self.step = self.STEPS.index("done")
+        self.show()
+        self.query_one("#step-text", Static).update(
+            "[b green]Your server is running![/]\n\nIt is ready to join in a minute or so. On each "
+            "computer that should play:\n\n  1. Open Minecraft and choose [b]Multiplayer[/]\n"
+            f"  2. Choose [b]Add Server[/] and type  [b]{address}{port}[/]\n  3. Join!\n\n"
+            "You can close this window any time. The server keeps running in the background.")
+
+
+class Players(ModalScreen[None]):
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Static("Asking the server…", id="players-text")
+            with Horizontal(classes="buttons"):
+                yield Button("Add", variant="primary", id="whitelist")
+                yield Button("Remove", id="unwhitelist")
+                yield Button("Make operator", id="op")
+                yield Button("Not operator", id="deop")
+                yield Button("Close", id="close")
+
+    def on_mount(self):
+        self.load()
+
+    @work(thread=True, exclusive=True)
+    def load(self):
+        try:
+            p = client.request("players")
+        except client.ServiceError as error:
+            text = f"[b red]{error}[/]"
+        else:
+            text = ("[b]Players[/]\n\n"
+                    f"Allowed to join: {', '.join(p['whitelist']) or 'nobody yet'}\n"
+                    f"Operators: {', '.join(p['ops']) or 'none'}\n"
+                    f"Playing now: {', '.join(p['online']) or 'nobody'}\n\n"
+                    + ("Only allowed players can join." if p["white_list_on"] else
+                       "[yellow]The whitelist is off: anyone who knows the address can join. "
+                       "Turn it on in Settings (s).[/]"))
+        self.app.call_from_thread(self.query_one("#players-text", Static).update, text)
+
+    def on_button_pressed(self, event):
+        action = event.button.id
+        if action == "close":
+            self.dismiss(None)
+            return
+        question = {"whitelist": "Which Minecraft name should be allowed to join?",
+                    "unwhitelist": "Which player should no longer be allowed to join?",
+                    "op": "Which player should become an operator? Operators can use cheats "
+                          "and server commands.",
+                    "deop": "Which operator should go back to being a normal player?"}[action]
+        self.app.push_screen(Ask(question), lambda name: name and self.change(action, name))
+
+    @work(thread=True)
+    def change(self, action, name):
+        try:
+            reply = client.request(action, name=name)
+            self.app.call_from_thread(self.app.notify, "\n".join(reply.get("reply") or []) or "Done.")
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error", timeout=8)
+        self.load()
+
+    def key_escape(self):
+        self.dismiss(None)
+
+
+class Backups(ModalScreen[None]):
+    KINDS = {"manual": "backed up by you", "daily": "daily", "before-restore": "before a restore",
+             "before-update": "before an update"}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog wide"):
+            yield Static("[b]Backups[/]  Daily backups happen while the server runs; the newest 7 "
+                         "are kept. Backups you make are never deleted.")
+            yield OptionList(id="backup-list")
+            with Horizontal(classes="buttons"):
+                yield Button("Back up now", variant="primary", id="backup")
+                yield Button("Restore", id="restore")
+                yield Button("Copy to Home folder", id="copy")
+                yield Button("Close", id="close")
+
+    def on_mount(self):
+        self.backups = []
+        self.load()
+
+    @work(thread=True, exclusive=True)
+    def load(self):
+        try:
+            self.backups = client.request("list-backups")["backups"]
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error")
+            return
+        self.app.call_from_thread(self.fill)
+
+    def fill(self):
+        listing = self.query_one(OptionList)
+        listing.clear_options()
+        for b in self.backups:
+            listing.add_option(Option(f"{when(b['time'])}  ·  {self.KINDS.get(b['kind'], b['kind'])}"
+                                      f"  ·  {b['size'] / 1048576:.1f} MB", id=b["name"]))
+        if not self.backups:
+            listing.add_option(Option("No backups yet", disabled=True))
+
+    def chosen(self):
+        listing = self.query_one(OptionList)
+        if listing.highlighted is None or not self.backups:
+            self.notify("Choose a backup in the list first.", severity="warning")
+            return None
+        return self.backups[listing.highlighted]
+
+    def on_button_pressed(self, event):
+        action = event.button.id
+        if action == "close":
+            self.dismiss(None)
+        elif action == "backup":
+            self.app.backup()
+            self.set_timer(3, self.load)
+        elif action == "copy" and (b := self.chosen()):
+            self.copy_home(b)
+        elif action == "restore" and (b := self.chosen()):
+            self.app.push_screen(Confirm(
+                f"Restore the backup from [b]{when(b['time'])}[/]?\n\nThe world goes back to how it "
+                "was then. Your world as it is now is backed up first, so you can come back to it. "
+                "If the server is running it restarts; anyone playing is disconnected.",
+                yes="Restore"), lambda yes: yes and self.restore(b))
+
+    @work(thread=True)
+    def restore(self, backup):
+        self.app.call_from_thread(self.app.notify, "Restoring… this can take a minute.")
+        try:
+            client.request("restore", name=backup["name"])
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error", timeout=10)
+            return
+        self.app.call_from_thread(self.app.notify, f"Restored the backup from {when(backup['time'])}.",
+                                  timeout=10)
+        self.load()
+
+    @work(thread=True)
+    def copy_home(self, backup):
+        try:
+            shutil.copy(backup["path"], os.path.join(REAL_HOME, backup["name"]))
+        except OSError as error:
+            self.app.call_from_thread(self.app.notify, f"Could not copy it: {error.strerror}",
+                                      severity="error")
+            return
+        self.app.call_from_thread(self.app.notify, f"Copied {backup['name']} to your Home folder.")
+
+    def key_escape(self):
+        self.dismiss(None)
+
+
+class Settings(ModalScreen[None]):
+    def __init__(self, status):
+        super().__init__()
+        self.status = status
+
+    def compose(self) -> ComposeResult:
+        s = self.status
+        with Vertical(classes="dialog"):
+            yield Static("[b]Settings[/]")
+            yield Label("Server name (shown in Minecraft's server list)")
+            yield Input(s.get("motd") or "", id="motd")
+            yield Label("Memory for the server, for example 4G")
+            yield Input(memory_label(s["ram_mb"]).replace(" ", ""), id="memory")
+            with Horizontal(classes="switch-row"):
+                yield Switch(s["white_list_on"], id="white_list")
+                yield Label("Only allowed players can join (whitelist)")
+            with Horizontal(classes="switch-row"):
+                yield Switch(s["autostart"], id="autostart")
+                yield Label("Start the server when the computer starts, if it was running")
+            if s.get("can_roll_back"):
+                yield Button(f"Go back to Minecraft {s.get('previous_version') or 'previous version'}",
+                             id="rollback")
+            with Horizontal(classes="buttons"):
+                yield Button("Save", variant="primary", id="save")
+                yield Button("Close", id="close")
+
+    def on_button_pressed(self, event):
+        if event.button.id == "close":
+            self.dismiss(None)
+        elif event.button.id == "rollback":
+            app = self.app
+            self.dismiss(None)  # first, so the question below is not what gets closed
+            app.push_screen(Confirm(
+                "Go back to the previous Minecraft version? Players' games must match the "
+                "server's version to join."), lambda yes: yes and app.ask_service(
+                    "rollback", "Going back…", lambda r: f"Now on Minecraft {r['version']}."))
+        elif event.button.id == "save":
+            ram_mb = parse_memory(self.query_one("#memory", Input).value)
+            if not ram_mb or ram_mb < 1024:
+                self.notify("Type a memory amount like 2G or 4096M (at least 1G).", severity="error")
+                return
+            self.app.ask_service(
+                "settings", done=lambda r: "Settings saved. " + (r.get("note") or ""),
+                motd=self.query_one("#motd", Input).value.strip(), ram_mb=ram_mb,
+                white_list=self.query_one("#white_list", Switch).value,
+                autostart=self.query_one("#autostart", Switch).value)
+            self.dismiss(None)
+
+    def key_escape(self):
+        self.dismiss(None)
+
+
 # --- the menu ---------------------------------------------------------------
 
 class Menu(App):
@@ -290,10 +671,19 @@ class Menu(App):
     .dialog VerticalScroll { height: 1fr; }
     .buttons { height: auto; margin-top: 1; align-horizontal: right; }
     .buttons Button { margin-left: 2; }
-    Confirm, Ask, Properties, Help { align: center middle; }
+    Confirm, Ask, Properties, Help, Players, Backups, Settings { align: center middle; }
+    .setup { width: 80; height: auto; margin: 2 4; padding: 1 2; border: round $accent; }
+    .setup Input { margin-top: 1; }
+    .switch-row { height: auto; margin-top: 1; }
+    .switch-row Label { padding: 1 1; }
+    #backup-list { height: 1fr; }
     #command { dock: bottom; }
     """
     BINDINGS = [
+        Binding("p", "players", "Players"),
+        Binding("b", "backups", "Backups"),
+        Binding("s", "settings", "Settings"),
+        Binding("u", "update", "Update", show=False),
         Binding("c", "console", "Console"),
         Binding("m", "move", "Move old world", show=False),
         Binding("question_mark", "help", "Help"),
@@ -344,6 +734,9 @@ class Menu(App):
             return
         if self.old_server and not status["migrated"] and status["you_may_change"]:
             self.call_from_thread(self.action_move)
+        elif (not status["downloaded"] and not status["eula"] and not status["migrated"]
+              and status["you_may_change"]):
+            self.call_from_thread(self.push_screen, Setup(status))
 
     # --- keys ---
 
@@ -497,6 +890,29 @@ class Menu(App):
         except OSError as error:
             message += f" (Could not copy it to your Home folder: {error.strerror})"
         self.call_from_thread(self.notify, message, timeout=10)
+
+    def action_players(self):
+        self.push_screen(Players())
+
+    def action_backups(self):
+        self.push_screen(Backups())
+
+    def action_settings(self):
+        if self.status:
+            self.push_screen(Settings(self.status))
+
+    def action_update(self):
+        latest = self.status and self.status.get("update_available")
+        if not latest:
+            self.notify("You have the latest Minecraft server.")
+            return
+        self.push_screen(Confirm(
+            f"Update the server to Minecraft {latest}?\n\nYour world is backed up first. If the "
+            "server is running it restarts, so anyone playing is disconnected for a minute. "
+            "Everyone's Minecraft must be updated to the same version to join.",
+            yes="Update"), lambda yes: yes and self.ask_service(
+                "update", "Backing up and updating… this can take a few minutes.",
+                lambda r: f"Updated to Minecraft {r['version']}."))
 
     def action_console(self):
         self.push_screen(Console())

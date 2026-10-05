@@ -36,6 +36,7 @@ import json
 import os
 import pwd
 import re
+import shutil
 import signal
 import socket
 import struct
@@ -60,13 +61,18 @@ STOP_GRACE = 120          # seconds to wait for the world to save on stop
 CRASH_WINDOW = 600        # a second crash within this many seconds: give up
 DEFAULT_RAM_MB = 2048
 LOG_LINES = 1000          # console lines kept for the menu's console screen
+BACKUPS_KEPT = 7          # of each automatic kind (daily, before-restore, before-update)
+DAY = 86400
+HOUSEKEEPING_FIRST = 60   # seconds after the service starts
+HOUSEKEEPING_EVERY = 3600
 
 # Requests anyone on the computer may make; everything else is the owner's.
-READ_ONLY = {"status", "log", "get-properties", "list-backups"}
+READ_ONLY = {"status", "log", "get-properties", "list-backups", "players"}
 
 PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 PROPERTY_KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 JAR_NAME = re.compile(r"^[A-Za-z0-9._\-]{1,64}\.jar$")
+BACKUP_NAME = re.compile(r"^backup-(manual|daily|before-restore|before-update)-[0-9-]+\.tar\.gz$")
 LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\]: ")
 # Server-thread lines only: chat is printed as "<name> text", so a player
 # cannot fake these by typing them.
@@ -121,7 +127,9 @@ class State:
 
     def __init__(self):
         self.data = {"desired": "stopped", "ram_mb": DEFAULT_RAM_MB, "version": None,
-                     "jar": "server.jar", "owner_uid": None, "migrated": False}
+                     "jar": "server.jar", "owner_uid": None, "migrated": False,
+                     "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
+                     "previous_version": None}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -373,7 +381,12 @@ class Server:
                  "you": user_name(caller),
                  "you_may_change": caller == 0 or owner is None or caller == owner,
                  "address": lan_address(), "port": int(props.get("server-port") or 25565),
-                 "motd": props.get("motd")}
+                 "motd": props.get("motd"), "white_list_on": props.get("white-list") == "true",
+                 "autostart": self.state["autostart"], "update_available": self.update_available(),
+                 "previous_version": self.state["previous_version"],
+                 "can_roll_back": os.path.exists(os.path.join(SERVER_DIR, "server.jar.previous"))}
+        backups = self.backups()
+        reply["last_backup"] = backups[0]["time"] if backups else None
         if self.running:
             reply["pid"] = self.process.pid
             reply["uptime_s"] = int(time.time() - self.started_at)
@@ -412,19 +425,17 @@ class Server:
         if not PLAYER_NAME.match(name or ""):
             raise Refused("A Minecraft name is 3 to 16 letters, digits or underscores.")
         if self.running:
-            command = {"whitelist": "whitelist add", "op": "op", "deop": "deop"}[action]
+            command = {"whitelist": "whitelist add", "unwhitelist": "whitelist remove",
+                       "op": "op", "deop": "deop"}[action]
             return {"ok": True, "reply": await self.console_command(f"{command} {name}")}
         filename = "ops.json" if action in ("op", "deop") else "whitelist.json"
         path = os.path.join(SERVER_DIR, filename)
-        try:
-            with open(path) as f:
-                entries = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            entries = []
+        entries = await read_server_json(filename)
         entries = [e for e in entries if e.get("name", "").lower() != name.lower()]
-        if action == "deop":
+        if action in ("deop", "unwhitelist"):
             write_file(path, json.dumps(entries, indent=2) + "\n")
-            return {"ok": True, "reply": [f"{name} is no longer an operator"]}
+            done = "is no longer an operator" if action == "deop" else "is off the whitelist"
+            return {"ok": True, "reply": [f"{name} {done}"]}
         profile = await asyncio.to_thread(lookup_player, name)
         if profile is None:
             raise Refused(f"There is no Minecraft account called {name}.")
@@ -435,6 +446,185 @@ class Server:
         write_file(path, json.dumps(entries, indent=2) + "\n")
         done = "added to the whitelist" if action == "whitelist" else "made an operator"
         return {"ok": True, "reply": [f"{profile['name']} {done} (applies when the server starts)"]}
+
+    async def players(self):
+        props = self.properties()
+        return {"ok": True,
+                "whitelist": sorted(e["name"] for e in await read_server_json("whitelist.json")),
+                "ops": sorted(e["name"] for e in await read_server_json("ops.json")),
+                "online": list(self.online) if self.running else [],
+                "white_list_on": props.get("white-list") == "true"}
+
+    def set_properties(self, values):
+        """Set some server.properties values, keeping every other line."""
+        ensure_server_dir()
+        path = os.path.join(SERVER_DIR, "server.properties")
+        lines = []
+        if os.path.exists(path):
+            with open(path) as f:
+                lines = f.read().splitlines()
+        for key, value in values.items():
+            lines = [l for l in lines if not l.startswith(key + "=")]
+            lines.append(f"{key}={value}")
+        write_file(path, "\n".join(lines) + "\n")
+
+    def settings(self, fields):
+        """The Settings screen and the first-run walkthrough: name, whitelist, memory, autostart."""
+        props = {}
+        if "motd" in fields:
+            motd = str(fields["motd"]).strip()
+            if not motd or len(motd) > 59 or any(c in motd for c in "\r\n\\"):
+                raise Refused("The server name is 1 to 59 characters on one line.")
+            props["motd"] = motd
+        if "white_list" in fields:
+            on = "true" if fields["white_list"] else "false"
+            props.update({"white-list": on, "enforce-whitelist": on})
+        if "ram_mb" in fields:
+            ram_mb = int(fields["ram_mb"])
+            if ram_mb < 1024:
+                raise Refused("The server needs at least 1024 MB (1 GB) of memory.")
+            self.state.update(ram_mb=ram_mb)
+        if "autostart" in fields:
+            self.state.update(autostart=bool(fields["autostart"]))
+        if props:
+            self.set_properties(props)
+        note = "Restart the server to use the new settings." if self.running and props else None
+        return {"ok": True, "note": note}
+
+    async def replace_world(self, archive, keep_jars):
+        """Swap the server's files for an archive's (a moved-over world, a backup).
+
+        The current files are kept beside it in COMMON, never deleted. With
+        keep_jars the server jars come along (backups leave them out).
+        """
+        kept = None
+        if os.path.isdir(SERVER_DIR) and os.listdir(SERVER_DIR):
+            kept = os.path.join(COMMON, time.strftime("previous-%Y-%m-%d-%H%M%S"))
+            # Renaming the folder itself only needs COMMON, which is root's;
+            # the snap_daemon-owned contents come along untouched.
+            os.rename(SERVER_DIR, kept)
+        ensure_server_dir()
+        if kept and keep_jars:
+            for jar in os.listdir(kept):
+                if jar.endswith(".jar") or jar == "server.jar.previous":
+                    shutil.copy(os.path.join(kept, jar), os.path.join(SERVER_DIR, jar))
+        code, output = await run_as_daemon("/usr/bin/python3", "-m", "mcsi.extract",
+                                           archive, SERVER_DIR)
+        if code != 0:
+            raise Refused(f"The files could not be unpacked: {output.strip()[-300:]}")
+        return kept, output.strip()
+
+    async def restore(self, name):
+        if not BACKUP_NAME.match(name or ""):
+            raise Refused("There is no backup by that name.")
+        archive = os.path.join(BACKUP_DIR, name)
+        if not os.path.exists(archive):
+            raise Refused("There is no backup by that name.")
+        was_running = self.running
+        safety = await self.backup("before-restore") if self.has_world() else None
+        await self.stop()
+        kept, _ = await self.replace_world(archive, keep_jars=True)
+        log(f"restored {name}")
+        if kept and safety:
+            await remove_folder(kept)  # the safety backup holds the same files
+        if was_running:
+            await self.start()
+        return {"ok": True, "safety_backup": safety and safety["name"]}
+
+    async def check_for_update(self):
+        try:
+            version, _, _ = await asyncio.to_thread(latest_server)
+        except Exception as error:  # offline: try again at the next check
+            log(f"update check failed: {error}")
+            return
+        self.state.update(latest=version, latest_checked=time.time())
+
+    def update_available(self):
+        latest, current = self.state["latest"], self.state["version"]
+        if self.state["jar"] != "server.jar" or not latest or latest == current:
+            return None
+        return latest
+
+    async def update(self):
+        """Back up, stop, get the new server (keeping the old one), start again."""
+        await self.check_for_update()
+        latest = self.update_available()
+        if not latest:
+            raise Refused("You already have the latest Minecraft server.")
+        was_running = self.running
+        old_version = self.state["version"]
+        if self.has_world():
+            await self.backup("before-update")
+        await self.stop()
+        jar = os.path.join(SERVER_DIR, "server.jar")
+        if os.path.exists(jar):
+            os.replace(jar, jar + ".previous")
+        try:
+            result = await self.download()
+        except Exception:
+            if os.path.exists(jar + ".previous"):
+                os.replace(jar + ".previous", jar)
+            if was_running:
+                await self.start()
+            raise
+        self.state.update(previous_version=old_version)
+        if was_running:
+            await self.start()
+        return {"ok": True, "version": result["version"]}
+
+    async def rollback(self):
+        """Go back to the server jar the last update replaced."""
+        jar = os.path.join(SERVER_DIR, "server.jar")
+        if not os.path.exists(jar + ".previous"):
+            raise Refused("There is no previous Minecraft version to go back to.")
+        was_running = self.running
+        await self.stop()
+        os.replace(jar, jar + ".swap")
+        os.replace(jar + ".previous", jar)
+        os.replace(jar + ".swap", jar + ".previous")
+        self.state.update(version=self.state["previous_version"],
+                          previous_version=self.state["version"], jar="server.jar")
+        if was_running:
+            await self.start()
+        return {"ok": True, "version": self.state["version"]}
+
+    def has_world(self):
+        return any(os.path.isfile(os.path.join(SERVER_DIR, d, "level.dat"))
+                   for d in os.listdir(SERVER_DIR)) if os.path.isdir(SERVER_DIR) else False
+
+    def backups(self):
+        ensure_backup_dir()
+        found = []
+        for name in os.listdir(BACKUP_DIR):
+            match = BACKUP_NAME.match(name)
+            if match:
+                path = os.path.join(BACKUP_DIR, name)
+                found.append({"name": name, "kind": match.group(1), "path": path,
+                              "size": os.path.getsize(path), "time": os.path.getmtime(path)})
+        return sorted(found, key=lambda b: b["time"], reverse=True)  # newest first
+
+    def rotate(self, kind):
+        """Keep the newest BACKUPS_KEPT of an automatic kind; manual ones are never deleted."""
+        if kind == "manual":
+            return
+        for old in [b for b in self.backups() if b["kind"] == kind][BACKUPS_KEPT:]:
+            os.unlink(old["path"])  # BACKUP_DIR is root's, so root may remove it
+            log(f"removed old backup {old['name']}")
+
+    async def housekeeping(self):
+        """Once an hour: a daily backup while the server runs, and a daily update check."""
+        await asyncio.sleep(HOUSEKEEPING_FIRST)
+        while True:
+            try:
+                if time.time() - self.state["latest_checked"] > DAY:
+                    await self.check_for_update()
+                daily = [b for b in self.backups() if b["kind"] == "daily"]
+                due = not daily or time.time() - daily[0]["time"] > DAY
+                if self.running and due and time.time() - self.started_at > 30:
+                    await self.backup("daily")
+            except Exception as error:  # never let housekeeping take the service down
+                log(f"housekeeping: {error!r}")
+            await asyncio.sleep(HOUSEKEEPING_EVERY)
 
     def get_properties(self):
         try:
@@ -479,30 +669,18 @@ class Server:
                 os.unlink(path + ".part")  # BACKUP_DIR is root's, so root may remove it
             raise Refused(f"The backup could not be written: {output.strip()[-300:]}")
         log(f"backup written: {name}")
+        self.rotate(kind)
         return {"ok": True, "path": path, "name": name, "size": os.path.getsize(path)}
 
     async def import_world(self, upload):
-        """Replace the server's files with a moved-over world (a tar.gz).
-
-        The current files are kept beside it, never deleted.
-        """
+        """Replace the server's files with a moved-over 14.x world (a tar.gz)."""
         if self.running:
             raise Refused("Stop the server before moving a world over.")
-        kept = None
-        if os.path.isdir(SERVER_DIR) and os.listdir(SERVER_DIR):
-            kept = os.path.join(COMMON, time.strftime("previous-%Y-%m-%d-%H%M%S"))
-            # Renaming the folder itself only needs COMMON, which is root's;
-            # the snap_daemon-owned contents come along untouched.
-            os.rename(SERVER_DIR, kept)
-        ensure_server_dir()
-        code, output = await run_as_daemon("/usr/bin/python3", "-m", "mcsi.extract",
-                                           upload, SERVER_DIR)
-        if code != 0:
-            raise Refused(f"The world could not be unpacked: {output.strip()[-300:]}")
+        kept, output = await self.replace_world(upload, keep_jars=False)
         self.state.update(migrated=True, version=None, jar="server.jar", desired="stopped")
         if kept:
             log(f"world moved over; the previous files are in {kept}")
-        return {"ok": True, "kept": kept, "note": output.strip() or None}
+        return {"ok": True, "kept": kept, "note": output or None}
 
     def put_jar(self, upload, name):
         if not JAR_NAME.match(name or ""):
@@ -516,6 +694,50 @@ class Server:
         os.replace(upload, target)
         self.state.update(jar=jar)
         return {"ok": True, "jar": jar}
+
+
+async def read_server_json(name):
+    """A JSON file from the server folder ([] if missing or unreadable).
+
+    Minecraft writes some files readable by snap_daemon only; root inside the
+    snap cannot read past that, so fall back to reading it as snap_daemon.
+    """
+    path = os.path.join(SERVER_DIR, name)
+    try:
+        with open(path) as f:
+            text = f.read()
+    except FileNotFoundError:
+        return []
+    except PermissionError:
+        code, text = await run_as_daemon("/usr/bin/cat", path)
+        if code != 0:
+            return []
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+async def remove_folder(path):
+    """Delete a set-aside server folder (COMMON/previous-*).
+
+    Its contents are mostly snap_daemon's, which root cannot delete here, so
+    snap_daemon empties it (the folder itself is root's and group-writable),
+    then root removes the empty folder from COMMON.
+    """
+    if not os.path.basename(path).startswith("previous-") or os.path.dirname(path) != COMMON:
+        raise ValueError(f"not a set-aside server folder: {path}")
+    code, output = await run_as_daemon("/usr/bin/find", path, "-mindepth", "1", "-delete")
+    try:
+        os.rmdir(path)
+    except OSError as error:
+        log(f"could not remove {path}: {error} {output.strip()[-200:]}")
+
+
+def current_boot_id():
+    with open("/proc/sys/kernel/random/boot_id") as f:
+        return f.read().strip()
 
 
 async def signal_server(pid, name):
@@ -667,6 +889,9 @@ async def main():
     ensure_server_dir()
     state = State()
     server = Server(state)
+    boot_id = current_boot_id()
+    booted = state["boot_id"] is not None and state["boot_id"] != boot_id
+    state.update(boot_id=boot_id)
 
     async def handle(reader, writer):
         upload = None
@@ -702,8 +927,19 @@ async def main():
                 reply = await server.stop()
             elif name == "command":
                 reply = await server.command(request["text"])
-            elif name in ("whitelist", "op", "deop"):
+            elif name in ("whitelist", "unwhitelist", "op", "deop"):
                 reply = await server.player(name, request.get("name"))
+            elif name == "players":
+                reply = await server.players()
+            elif name == "settings":
+                reply = server.settings({k: v for k, v in request.items()
+                                         if k in ("motd", "white_list", "ram_mb", "autostart")})
+            elif name == "restore":
+                reply = await server.restore(request.get("name"))
+            elif name == "update":
+                reply = await server.update()
+            elif name == "rollback":
+                reply = await server.rollback()
             elif name == "get-properties":
                 reply = server.get_properties()
             elif name == "put-properties":
@@ -711,11 +947,7 @@ async def main():
             elif name == "backup":
                 reply = await server.backup()
             elif name == "list-backups":
-                ensure_backup_dir()
-                reply = {"ok": True, "backups": [
-                    {"name": n, "path": os.path.join(BACKUP_DIR, n),
-                     "size": os.path.getsize(os.path.join(BACKUP_DIR, n))}
-                    for n in sorted(os.listdir(BACKUP_DIR), reverse=True) if n.endswith(".tar.gz")]}
+                reply = {"ok": True, "backups": server.backups()}
             elif name == "import-world":
                 reply = await server.import_world(upload)
             elif name == "put-jar":
@@ -764,12 +996,19 @@ async def main():
                           "stopped. Restart the computer, then open the menu again.")
         log("not starting a second server")
     elif state["desired"] == "running":
-        log("the server was running before - starting it again")
-        try:
-            await server.start()
-        except Refused as error:
-            server.problem = str(error)
-            log(f"could not start it: {error}")
+        # A new boot id means the computer restarted (rather than a snap
+        # refresh or a service restart, which always bring the server back).
+        if booted and not state["autostart"]:
+            log("the computer restarted and 'start with the computer' is off - leaving it stopped")
+            state.update(desired="stopped")
+        else:
+            log("the server was running before - starting it again")
+            try:
+                await server.start()
+            except Refused as error:
+                server.problem = str(error)
+                log(f"could not start it: {error}")
+    asyncio.create_task(server.housekeeping())
 
     finished = asyncio.Event()
     loop = asyncio.get_running_loop()
