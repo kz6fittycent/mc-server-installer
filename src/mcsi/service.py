@@ -5,6 +5,11 @@ owns the Minecraft server: downloads it, starts it as the unprivileged
 snap_daemon user, stops it cleanly, and answers requests from the menu over a
 Unix socket - one JSON object per line, one reply per request.
 
+Commands reach the server through its console (Java's stdin), which only this
+service holds, and replies are read from its output. RCON stays off: vanilla
+Minecraft binds RCON to the game's own address, so it cannot be kept to this
+computer while the game is reachable by the family.
+
 Because systemd runs it, the server keeps going when the person who started
 it logs out (which is what killed the 1.x server, started from a login). It
 remembers whether the server should be running, so a snap refresh or a
@@ -17,15 +22,13 @@ import hashlib
 import json
 import os
 import pwd
-import secrets
 import signal
 import socket
 import struct
 import sys
+import re
 import time
 import urllib.request
-
-from mcsi import rcon
 
 SNAP = os.environ["SNAP"]
 COMMON = os.environ["SNAP_COMMON"]
@@ -35,7 +38,6 @@ PID_FILE = os.path.join(COMMON, "server.pid")
 SOCKET_PATH = os.path.join(COMMON, "control.sock")
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
-RCON_PORT = 25575
 STOP_GRACE = 120          # seconds to wait for the world to save on stop
 CRASH_WINDOW = 600        # a second crash within this many seconds: give up
 DEFAULT_RAM_MB = 2048
@@ -61,8 +63,7 @@ class State:
     """What survives restarts: settings, and whether the server should run."""
 
     def __init__(self):
-        self.data = {"desired": "stopped", "ram_mb": DEFAULT_RAM_MB,
-                     "version": None, "rcon_password": secrets.token_urlsafe(24)}
+        self.data = {"desired": "stopped", "ram_mb": DEFAULT_RAM_MB, "version": None}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -92,6 +93,8 @@ class Server:
         self.stopping = False
         self.last_crash = None
         self.problem = None
+        self.console_lock = asyncio.Lock()
+        self.listeners = []
 
     @property
     def running(self):
@@ -100,7 +103,7 @@ class Server:
     # --- files ---------------------------------------------------------
 
     def prepare_files(self):
-        """server.properties with RCON on, and a folder both sides can write.
+        """server.properties with RCON off, and a folder both sides can write.
 
         Inside a snap, root has no CAP_DAC_OVERRIDE: the service cannot write
         into a folder or file that belongs to snap_daemon. So the folder stays
@@ -120,8 +123,9 @@ class Server:
                 if "=" in line and not line.startswith("#"):
                     key, value = line.split("=", 1)
                     props[key] = value
-        wanted = {"enable-rcon": "true", "rcon.port": str(RCON_PORT),
-                  "rcon.password": self.state["rcon_password"]}
+        # Off even in a migrated world that had it on: it would listen on
+        # every network interface (see the module docstring).
+        wanted = {"enable-rcon": "false"}
         for key, value in wanted.items():
             if props.get(key) != value:
                 lines = [l for l in lines if not l.startswith(key + "=")]
@@ -133,6 +137,9 @@ class Server:
     async def start(self, ram_mb=None):
         if self.running:
             return {"ok": False, "error": "The server is already running."}
+        if not await stop_leftover():
+            return {"ok": False, "error": "An earlier copy of the server is still running "
+                    "and could not be stopped. Restart the computer, then try again."}
         if not os.path.exists(os.path.join(SERVER_DIR, "server.jar")):
             return {"ok": False, "error": "Download the server first."}
         if not self.eula_accepted():
@@ -143,16 +150,15 @@ class Server:
         console_path = os.path.join(SERVER_DIR, "console.log")
         if os.path.exists(console_path) and os.stat(console_path).st_uid != 0:
             os.replace(console_path, console_path + ".old")
-        console = open(console_path, "ab")
         self.process = await asyncio.create_subprocess_exec(
             "setpriv", f"--reuid={uid}", f"--regid={gid}", "--clear-groups",
             "--no-new-privs", "--",
             java_binary(), "-Xms128M", f"-Xmx{ram_mb}M", "-XX:+UseG1GC",
             "-jar", "server.jar", "nogui",
-            cwd=SERVER_DIR, stdin=asyncio.subprocess.DEVNULL,
-            stdout=console, stderr=console,
+            cwd=SERVER_DIR, stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             env={"PATH": os.environ.get("PATH", ""), "HOME": SERVER_DIR, "LANG": "C.UTF-8"})
-        console.close()
+        asyncio.create_task(self.pump(self.process, console_path))
         self.started_at = time.time()
         self.stopping = False
         self.problem = None
@@ -162,6 +168,44 @@ class Server:
         log(f"server started: pid {self.process.pid}, {ram_mb} MB")
         asyncio.create_task(self.watch(self.process))
         return {"ok": True, "pid": self.process.pid}
+
+    async def pump(self, process, console_path):
+        """Copy the server's output to console.log and to anyone waiting for a reply.
+
+        Always draining it also keeps Java from blocking on a full pipe.
+        """
+        with open(console_path, "ab") as console:
+            while line := await process.stdout.readline():
+                console.write(line)
+                console.flush()
+                text = line.decode(errors="replace").rstrip()
+                for queue in list(self.listeners):
+                    queue.put_nowait(text)
+
+    async def console_command(self, text, first_wait=3.0, settle=0.4):
+        """Type a command into the server console; return the lines it printed.
+
+        Replies are not marked as such, so this collects what the server
+        prints until it goes quiet for `settle` seconds.
+        """
+        async with self.console_lock:
+            queue = asyncio.Queue()
+            self.listeners.append(queue)
+            try:
+                self.process.stdin.write(text.encode() + b"\n")
+                await self.process.stdin.drain()
+                lines = []
+                timeout = first_wait
+                while True:
+                    try:
+                        line = await asyncio.wait_for(queue.get(), timeout)
+                    except asyncio.TimeoutError:
+                        break
+                    lines.append(LOG_PREFIX.sub("", line))
+                    timeout = settle
+                return lines
+            finally:
+                self.listeners.remove(queue)
 
     async def watch(self, process):
         code = await process.wait()
@@ -179,7 +223,7 @@ class Server:
         await self.start()
 
     async def stop(self, remember=True):
-        """Stop cleanly: 'stop' over RCON, wait for the save, force only as a last resort.
+        """Stop cleanly: 'stop' on the console, wait for the save, force only as a last resort.
 
         remember=False is for the service itself shutting down (snap refresh,
         reboot): the server should come back afterwards.
@@ -193,17 +237,18 @@ class Server:
             self.state.update(desired="stopped")
         process = self.process
         try:
-            await rcon.command(RCON_PORT, self.state["rcon_password"], "stop")
-            how = "rcon"
-        except Exception as error:  # not up yet, or RCON broken: SIGTERM also saves
-            log(f"RCON stop failed ({error}), sending SIGTERM")
-            process.terminate()
+            process.stdin.write(b"stop\n")
+            await process.stdin.drain()
+            how = "console"
+        except (BrokenPipeError, ConnectionResetError) as error:  # SIGTERM also saves
+            log(f"console stop failed ({error}), sending SIGTERM")
+            await signal_server(process.pid, "TERM")
             how = "sigterm"
         try:
             await asyncio.wait_for(process.wait(), STOP_GRACE)
         except asyncio.TimeoutError:
             log(f"server did not stop within {STOP_GRACE}s - killing it")
-            process.kill()
+            await signal_server(process.pid, "KILL")
             await process.wait()
             how += "+kill"
         log(f"server stopped ({how})")
@@ -226,11 +271,8 @@ class Server:
             reply["pid"] = self.process.pid
             reply["uptime_s"] = int(time.time() - self.started_at)
             reply["user"] = pwd.getpwuid(os.stat(f"/proc/{self.process.pid}").st_uid).pw_name
-            try:
-                reply["players"] = await rcon.command(
-                    RCON_PORT, self.state["rcon_password"], "list", timeout=3)
-            except Exception:
-                reply["players"] = None  # still starting
+            lines = await self.console_command("list", first_wait=2.0)
+            reply["players"] = next((l for l in lines if "players online" in l), None)
         return reply
 
     async def download(self):
@@ -245,8 +287,23 @@ class Server:
     async def command(self, text):
         if not self.running:
             return {"ok": False, "error": "The server is not running."}
-        return {"ok": True, "reply": await rcon.command(
-            RCON_PORT, self.state["rcon_password"], text)}
+        return {"ok": True, "reply": await self.console_command(text)}
+
+
+async def signal_server(pid, name):
+    """Send a signal to the server as snap_daemon.
+
+    Inside the snap, root lacks CAP_KILL and may not signal another user's
+    process; snap_daemon may signal its own. Returns True if it was sent.
+    """
+    uid, gid = daemon_ids()
+    helper = await asyncio.create_subprocess_exec(
+        "setpriv", f"--reuid={uid}", f"--regid={gid}", "--clear-groups", "--no-new-privs",
+        "--", "/usr/bin/kill", "-s", name, str(pid))
+    return await helper.wait() == 0
+
+
+LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\]: ")
 
 
 def ensure_server_dir():
@@ -320,12 +377,13 @@ def upnp_probe():
     return {"ok": True, "sent": True, "routers_found": replies}
 
 
-async def stop_leftover(state):
+async def stop_leftover():
     """Stop a server a previous run of the service left behind.
 
     With stop-mode: sigterm, systemd signals only the service. If the service
-    itself ever dies (a bug, or systemd's stop timeout), Java keeps running;
-    a fresh service must not start a second one on the same port.
+    itself ever dies (a bug, or systemd's stop timeout), Java keeps running,
+    and a fresh service must not start a second one on the same port.
+    Returns True when no leftover server is running any more.
     """
     try:
         with open(PID_FILE) as f:
@@ -334,22 +392,24 @@ async def stop_leftover(state):
         # but it may stat the directory: a live process owned by snap_daemon
         # with the pid we recorded is our server.
         if os.stat(f"/proc/{pid}").st_uid != daemon_ids()[0]:
-            return
+            return True
     except (FileNotFoundError, ValueError):
-        return
-    log(f"found a server left running (pid {pid}) - stopping it cleanly first")
-    try:
-        await rcon.command(RCON_PORT, state["rcon_password"], "stop")
-    except Exception as error:
-        log(f"RCON stop failed ({error}), sending SIGTERM")
-        os.kill(pid, signal.SIGTERM)
+        return True
+    # Its console belonged to the service that died, so SIGTERM it: Minecraft
+    # saves the world on SIGTERM (a marker block survived this in phase 1).
+    log(f"found a server left running (pid {pid}) - stopping it (SIGTERM saves the world)")
+    if not await signal_server(pid, "TERM"):
+        log("could not signal it")
+        return False
     for _ in range(STOP_GRACE):
         if not os.path.exists(f"/proc/{pid}"):
             log("leftover server stopped")
-            return
+            return True
         await asyncio.sleep(1)
     log("leftover server did not stop - killing it")
-    os.kill(pid, signal.SIGKILL)
+    await signal_server(pid, "KILL")
+    await asyncio.sleep(2)
+    return not os.path.exists(f"/proc/{pid}")
 
 
 def peer_uid(writer):
@@ -400,10 +460,15 @@ async def main():
     log(f"listening on {SOCKET_PATH}")
 
     try:
-        await stop_leftover(state)
+        clear = await stop_leftover()
     except Exception as error:  # never let this crash-loop the service
         log(f"could not check for a leftover server: {error}")
-    if state["desired"] == "running":
+        clear = False
+    if not clear:
+        server.problem = ("An earlier copy of the server is still running and could not be "
+                          "stopped. Restart the computer, then open the menu again.")
+        log("not starting a second server")
+    elif state["desired"] == "running":
         log("the server was running before - starting it again")
         result = await server.start()
         if not result["ok"]:
