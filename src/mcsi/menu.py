@@ -47,7 +47,7 @@ OPTIONS = {
     14: "Add a player to the whitelist",
     15: "Make a player an operator",
     16: "Remove a player's operator status",
-    17: "Add a player to the whitelist (server stopped)",
+    17: "Remove a player from the whitelist",
 }
 START_RAM = {4: 2048, 5: 4096, 6: 6144, 7: 8192, 8: 16384}
 
@@ -70,8 +70,10 @@ was running before.
 
 ## Good to know
 
-- **Who can play:** add your family with option 14. Turn on
-  `white-list=true` in the settings (option 3) so only they can join.
+- **Who can play:** anyone at home, unless you choose otherwise. To allow
+  only certain players, add them (option 14, or press **p**) and turn on the
+  whitelist in Settings (press **s**). Do that before letting people join
+  over the internet.
 - **Operators** (option 15) can use cheats and server commands in the game.
 - **Backups** (press **b**): daily while the server runs (the newest 7 are
   kept), before every update and restore, and whenever you choose option 10,
@@ -127,7 +129,10 @@ def memory_label(mb):
 def status_text(s):
     """The status panel, from the service's status reply."""
     lines = []
-    if s["running"]:
+    if s["running"] and not s.get("ready", True):
+        lines.append(f"[b yellow]◐ Starting…[/]  {server_label(s)}  ·  ready to join in a minute "
+                     "or so")
+    elif s["running"]:
         players = s.get("players", [])
         who = f": {', '.join(players)}" if players else ""
         lines.append(f"[b green]● Running[/]  {server_label(s)}  ·  "
@@ -367,17 +372,20 @@ class Setup(Screen):
             field.value = self.answers.get("memory", memory_label(self.memory).replace(" ", ""))
             field.placeholder = "for example 2G or 4096M"
         elif name == "players":
-            text.update("[b]Who can play?[/]\n\nType everyone's Minecraft name, separated by commas. "
-                        "Only these players can join. The [b]first name[/] becomes the operator, who "
-                        "can use cheats and server commands in the game.")
+            text.update("[b]Who can play?[/]\n\nLeave this empty and anyone at home can join - "
+                        "that's how most families use it.\n\nOr, to allow only certain players, type "
+                        "their Minecraft names, separated by commas. The [b]first name[/] becomes the "
+                        "operator, who can use cheats and server commands in the game. You can change "
+                        "this later (press p).")
             field.value = self.answers.get("players", "")
             field.placeholder = "for example Steve, Alex"
         elif name == "ready":
-            players = ", ".join(self.answers["names"])
+            names = self.answers["names"]
+            players = (f"only {', '.join(names)} (operator: {names[0]})" if names
+                       else "anyone at home can join")
             text.update(f"[b]Ready[/]\n\nServer name: {self.answers['motd']}\nMemory: "
-                        f"{memory_label(self.answers['ram_mb'])}\nPlayers: {players} "
-                        f"(operator: {self.answers['names'][0]})\n\nThis downloads the latest "
-                        "Minecraft server and starts it.")
+                        f"{memory_label(self.answers['ram_mb'])}\nPlayers: {players}"
+                        "\n\nThis downloads the latest Minecraft server and starts it.")
         if field.display:
             field.focus()
         else:
@@ -413,10 +421,9 @@ class Setup(Screen):
         elif name == "players":
             names = [n.strip() for n in value.split(",") if n.strip()]
             bad = [n for n in names if not PLAYER_NAME.match(n)]
-            if not names or bad:
-                self.notify("Type at least one Minecraft name. Names are 3 to 16 letters, "
-                            "digits or underscores." + (f" Not valid: {', '.join(bad)}" if bad else ""),
-                            severity="error", timeout=8)
+            if bad:
+                self.notify("Minecraft names are 3 to 16 letters, digits or underscores. "
+                            f"Not valid: {', '.join(bad)}", severity="error", timeout=8)
                 return
             self.answers.update(players=value, names=names)
         self.step += 1
@@ -435,8 +442,11 @@ class Setup(Screen):
         a = self.answers
         try:
             client.request("accept-eula"); say("✓ Agreed to the Minecraft EULA")
-            client.request("settings", motd=a["motd"], white_list=True, ram_mb=a["ram_mb"])
-            say("✓ Saved the server name and memory; only your players can join")
+            # Naming players turns the whitelist on; otherwise anyone at home can join.
+            client.request("settings", motd=a["motd"], white_list=bool(a["names"]), ram_mb=a["ram_mb"])
+            say("✓ Saved the server name and memory")
+            if not a["names"]:
+                say("✓ Anyone at home can join")
             for number, player in enumerate(a["names"]):
                 client.request("whitelist", name=player)
                 if number == 0:
@@ -490,9 +500,9 @@ class Players(ModalScreen[None]):
                     f"Allowed to join: {', '.join(p['whitelist']) or 'nobody yet'}\n"
                     f"Operators: {', '.join(p['ops']) or 'none'}\n"
                     f"Playing now: {', '.join(p['online']) or 'nobody'}\n\n"
-                    + ("Only allowed players can join." if p["white_list_on"] else
-                       "[yellow]The whitelist is off: anyone who knows the address can join. "
-                       "Turn it on in Settings (s).[/]"))
+                    + ("Only the allowed players can join (the whitelist is on)." if p["white_list_on"]
+                       else "Anyone at home can join. To allow only the players listed above, "
+                            "turn on the whitelist in Settings (s)."))
         self.app.call_from_thread(self.query_one("#players-text", Static).update, text)
 
     def on_button_pressed(self, event):
@@ -822,9 +832,12 @@ class Menu(App):
                                      "The world is saved first."),
                              lambda yes: yes and self.ask_service(
                                  "stop", "Saving the world and stopping…", "The server has stopped."))
-        elif number in (14, 17):
+        elif number == 14:
             self.push_screen(Ask("Which Minecraft name should be allowed to join?"),
                              lambda name: name and self.player("whitelist", name))
+        elif number == 17:
+            self.push_screen(Ask("Which player should no longer be allowed to join?"),
+                             lambda name: name and self.player("unwhitelist", name))
         elif number == 15:
             self.push_screen(Ask("Which Minecraft name should become an operator? "
                                  "Operators can use cheats and server commands."),

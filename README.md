@@ -33,11 +33,12 @@ mc-server-installer
 
 ## First run
 
-The first time, a short setup asks a few questions - a name for your server, how
-much memory it may use (it suggests an amount for your computer), and who may
-play - then downloads Minecraft and starts the server.
+The first time, a short setup asks a few questions - a name for your server and
+how much memory it may use (it suggests an amount for your computer) - then
+downloads Minecraft and starts the server. Anyone at home can join; if you'd
+rather allow only certain players, the setup lets you name them.
 
-![Setup asks for everyone's Minecraft name; the first becomes the operator](docs/screenshots/setup-players.png)
+![Setup asks who may play: leave it empty and anyone at home can join](docs/screenshots/setup-players.png)
 
 When it is done, it shows the address to use. On every computer that should
 play: open Minecraft, choose **Multiplayer**, then **Add Server**, and type that
@@ -115,8 +116,8 @@ background server. The original files stay where they were, as a backup.
 
 The server is reachable by anyone on your home network. To let friends join over
 the internet, forward **TCP port 25565** on your router to this computer, and
-give them your public IP address. Keep the whitelist on, so only the players you
-added can join. (A guided setup for this is planned for a later version.)
+give them your public IP address. First turn the whitelist on (Settings, **s**)
+and add each player (**p**), so only the players you added can join. (A guided setup for this is planned for a later version.)
 
 ## Where things are
 

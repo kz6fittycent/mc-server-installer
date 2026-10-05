@@ -65,6 +65,7 @@ BACKUPS_KEPT = 7          # of each automatic kind (daily, before-restore, befor
 DAY = 86400
 HOUSEKEEPING_FIRST = 60   # seconds after the service starts
 HOUSEKEEPING_EVERY = 3600
+STARTUP_WAIT = 120        # seconds a command waits for the server to finish starting
 
 # Requests anyone on the computer may make; everything else is the owner's.
 READ_ONLY = {"status", "log", "get-properties", "list-backups", "players"}
@@ -77,6 +78,7 @@ LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\]: ")
 # Server-thread lines only: chat is printed as "<name> text", so a player
 # cannot fake these by typing them.
 JOINED = re.compile(r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\]: ([A-Za-z0-9_]{3,16}) joined the game$")
+DONE = re.compile(r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\]: Done \(")
 LEFT = re.compile(r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\]: ([A-Za-z0-9_]{3,16}) left the game$")
 
 
@@ -165,6 +167,7 @@ class Server:
         self.lines = collections.deque(maxlen=LOG_LINES)  # (sequence number, text)
         self.line_seq = 0
         self.online = []  # players, from the server's join/leave lines
+        self.ready = asyncio.Event()  # set when the server says "Done" after starting
 
     @property
     def running(self):
@@ -229,6 +232,7 @@ class Server:
         asyncio.create_task(self.pump(self.process, console_path))
         self.started_at = time.time()
         self.online = []
+        self.ready = asyncio.Event()
         self.stopping = False
         self.problem = None
         self.state.update(desired="running", ram_mb=ram_mb)
@@ -249,6 +253,8 @@ class Server:
                 text = line.decode(errors="replace").rstrip()
                 self.line_seq += 1
                 self.lines.append((self.line_seq, text))
+                if not self.ready.is_set() and DONE.match(text):
+                    self.ready.set()
                 if match := JOINED.match(text):
                     self.online.append(match.group(1))
                 elif (match := LEFT.match(text)) and match.group(1) in self.online:
@@ -265,6 +271,17 @@ class Server:
         """
         if "\n" in text or "\r" in text:
             raise Refused("A command must be a single line.")
+        # Typed while the server is still starting, a command's "reply" would be
+        # whatever start-up line comes next - so wait until it is ready.
+        deadline = time.monotonic() + STARTUP_WAIT
+        while not self.ready.is_set():
+            if not self.running:  # it stopped (or crashed) while starting
+                raise Refused("The server is not running.")
+            if time.monotonic() > deadline:
+                raise Refused("The server is still starting. Try again in a minute.")
+            await asyncio.sleep(0.5)
+        if not self.running:
+            raise Refused("The server is not running.")
         async with self.console_lock:
             queue = asyncio.Queue()
             self.listeners.append(queue)
@@ -390,6 +407,7 @@ class Server:
         if self.running:
             reply["pid"] = self.process.pid
             reply["uptime_s"] = int(time.time() - self.started_at)
+            reply["ready"] = self.ready.is_set()
             reply["players"] = list(self.online)
             reply["players_max"] = int(props.get("max-players") or 20)
         return reply

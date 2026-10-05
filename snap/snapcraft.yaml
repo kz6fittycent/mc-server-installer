@@ -6,15 +6,15 @@ description: |
   Set up a Minecraft: Java Edition server on your own computer in a couple of
   minutes, so your family can play together in one world.
 
-  Run `mc-server-installer` in a terminal. A short setup asks for a server name,
-  how much memory to use and who may play, then downloads Minecraft and starts
-  the server. It shows the address to type into Minecraft.
+  Run `mc-server-installer` in a terminal. A short setup asks for a server name
+  and how much memory to use, then downloads Minecraft and starts the server. It
+  shows the address to type into Minecraft.
 
   The server runs in the background: close the window, log out, or restart the
   computer, and it keeps going (or comes back by itself).
 
-  - Only the players you add can join (whitelist), and their accounts are checked
-    with Mojang.
+  - Anyone at home can join - or only the players you add (whitelist), with their
+    names checked with Mojang.
   - Daily backups while the server runs (the newest 7 are kept), plus a backup
     before every update or restore. Restore any of them from the menu.
   - Tells you when a new Minecraft is out, and updates in one step, with the
