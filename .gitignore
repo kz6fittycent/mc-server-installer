@@ -12,3 +12,7 @@ stage/
 
 # Source archive packed by `snapcraft cleanbuild` before pushing to the LXD container
 /*_source.tar.bz2
+
+# Python bytecode (from running the menu tests locally)
+__pycache__/
+*.pyc
