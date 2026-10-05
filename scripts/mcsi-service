@@ -1,0 +1,4 @@
+#!/bin/sh
+# 2.0 background service (see src/mcsi/service.py)
+export PYTHONPATH="$SNAP/lib"
+exec /usr/bin/python3 -m mcsi.service "$@"

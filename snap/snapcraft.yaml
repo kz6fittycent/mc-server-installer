@@ -29,7 +29,35 @@ platforms:
     build-on: [amd64]
     build-for: [amd64]
 
+# The 2.0 background service runs the Minecraft server as this unprivileged
+# user, never as root.
+system-usernames:
+  snap_daemon: shared
+
 apps:
+  # 2.0: owns the Minecraft server. systemd starts it at install and at boot,
+  # outside anyone's login, so logging out no longer kills the server.
+  service:
+    command: mcsi-service
+    daemon: simple
+    install-mode: enable
+    restart-condition: on-failure
+    # On a refresh or shutdown, signal only the service: it stops Minecraft
+    # the same way the Stop button does (RCON "stop", then wait for the save).
+    # The default signals Java at the same moment, which skips that path.
+    stop-mode: sigterm
+    # Room for the world to save.
+    stop-timeout: 3m
+    plugs:
+      - network
+      - network-bind
+
+  # 2.0 phase 1 test client, standing in for the new menu.
+  ctl:
+    command: mcsi-ctl
+    plugs:
+      - network
+
   mc-server-installer:
     command: mc-server-installer
     plugs:
@@ -71,3 +99,10 @@ parts:
   publish:
     plugin: dump
     source: scripts
+
+  # 2.0 Python code. Standard library only for now: core24 provides python3.
+  mcsi:
+    plugin: dump
+    source: src
+    organize:
+      mcsi: lib/mcsi
