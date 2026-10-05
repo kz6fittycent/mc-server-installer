@@ -1,0 +1,2 @@
+# The menu's only dependency (MIT): https://textual.textualize.io/
+textual==8.2.8

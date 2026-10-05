@@ -1,0 +1,4 @@
+#!/bin/sh
+# Command-line access to the service (see src/mcsi/ctl.py)
+export PYTHONPATH="$SNAP/lib"
+exec /usr/bin/python3 -m mcsi.ctl "$@"

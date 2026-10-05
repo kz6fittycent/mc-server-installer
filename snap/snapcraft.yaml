@@ -29,14 +29,40 @@ platforms:
     build-on: [amd64]
     build-for: [amd64]
 
+# The 2.0 background service runs the Minecraft server as this unprivileged
+# user, never as root.
+system-usernames:
+  snap_daemon: shared
+
 apps:
-  mc-server-installer:
-    command: mc-server-installer
+  # Owns the Minecraft server. systemd starts it at install and at boot,
+  # outside anyone's login, so logging out no longer kills the server.
+  service:
+    command: mcsi-service
+    daemon: simple
+    install-mode: enable
+    restart-condition: on-failure
+    # On a refresh or shutdown, signal only the service: it stops Minecraft
+    # the same way the Stop button does ("stop" on the console, then wait
+    # for the save). The default signals Java at the same moment, which
+    # skips that path.
+    stop-mode: sigterm
+    # Room for the world to save.
+    stop-timeout: 3m
     plugs:
       - network
-      - home
       - network-bind
-      - process-control #to help with stopping MC server 
+
+  # The menu: a front end for the service. It never runs the server itself.
+  mc-server-installer:
+    command: mcsi-menu
+    plugs:
+      - network
+      - home  # "Back up now" copies to the Home folder; option 12 reads a jar
+
+  # Command-line access to the service, for testing and support.
+  ctl:
+    command: mcsi-ctl
 
 parts:
   mc-server-installer:
@@ -58,16 +84,22 @@ parts:
             
     stage-packages:
       - openjdk-25-jre-headless
-      - curl
-      - sed
-      - jq
-      - nano
-      - tar
-      - util-linux
-      - dialog
-      - tmux
       - libhsdis0-fcml
-    
+
   publish:
     plugin: dump
     source: scripts
+
+  # The service and the menu. The service uses the standard library only
+  # (core24's python3); the menu also needs Textual, from the part below.
+  mcsi:
+    plugin: dump
+    source: src
+    organize:
+      mcsi: lib/mcsi
+
+  menu-deps:
+    plugin: python
+    source: snap/local/menu
+    python-requirements:
+      - requirements.txt
