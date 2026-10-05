@@ -48,6 +48,7 @@ OPTIONS = {
     15: "Make a player an operator",
     16: "Remove a player's operator status",
     17: "Remove a player from the whitelist",
+    18: "Specify server version (e.g. 26.2)",
 }
 START_RAM = {4: 2048, 5: 4096, 6: 6144, 7: 8192, 8: 16384}
 
@@ -81,6 +82,8 @@ was running before.
 - **Players** (press **p**) and **Settings** (press **s**): who can join,
   operators, the server name, memory, and whether the server starts with
   the computer.
+- **A specific version** (option 18): for when the latest Minecraft has a
+  problem. Everyone's game must be set to the same version.
 - **Updates:** when a new Minecraft comes out, the top of this window says
   so. Press **u**: your world is backed up, then the server updates and
   restarts. Settings can go back to the previous version.
@@ -152,6 +155,9 @@ def status_text(s):
         lines.append(f"Join from Minecraft at: [b]{s['address']}{port}[/]")
     if not s["you_may_change"]:
         lines.append(f"[yellow]You can watch this server; only {s['owner']} can change it.[/]")
+    if s.get("pinned") and s.get("latest") and s.get("version") != s.get("latest"):
+        lines.append(f"[dim]You chose Minecraft {s['version']}. Minecraft {s['latest']} is the "
+                     "latest: press 1 to switch to it.[/]")
     if s.get("update_available"):
         lines.append(f"[b cyan]Minecraft {s['update_available']} is available.[/] "
                      "Press [b]u[/] to update (your world is backed up first).")
@@ -765,7 +771,7 @@ class Menu(App):
         self.digits += event.character
         if self.digit_timer:
             self.digit_timer.stop()
-        # A second digit can still follow a 1 (10-17); anything else is complete.
+        # A second digit can still follow a 1 (10-18); anything else is complete.
         if self.digits == "1":
             self.digit_timer = self.set_timer(0.8, self.run_digits)
         else:
@@ -835,6 +841,8 @@ class Menu(App):
         elif number == 14:
             self.push_screen(Ask("Which Minecraft name should be allowed to join?"),
                              lambda name: name and self.player("whitelist", name))
+        elif number == 18:
+            self.push_screen(Ask("Specify server version (e.g. 26.2):", "26.2"), self.choose_version)
         elif number == 17:
             self.push_screen(Ask("Which player should no longer be allowed to join?"),
                              lambda name: name and self.player("unwhitelist", name))
@@ -845,6 +853,23 @@ class Menu(App):
         elif number == 16:
             self.push_screen(Ask("Which operator should go back to being a normal player?"),
                              lambda name: name and self.player("deop", name))
+
+    def choose_version(self, version):
+        if not version:
+            return
+        self.push_screen(Confirm(
+            f"Switch the server to Minecraft [b]{version}[/]?\n\n"
+            "• Everyone's Minecraft must be the same version to join. In the Minecraft "
+            f"Launcher: Installations → New installation → Version {version}.\n"
+            "• A world played on a newer version may not open in an older one. Your world "
+            "is backed up first, so you can go back (Backups, b).\n"
+            "• If the server is running, it restarts.\n\n"
+            "You won't be nagged to update while you're on a version you chose. Option 1 "
+            "goes back to the latest.", yes="Switch"),
+            lambda yes: yes and self.ask_service(
+                "download", f"Backing up and getting Minecraft {version}…",
+                lambda r: f"Now on Minecraft {r['version']}. " + (r.get("note") or ""),
+                version=version))
 
     def start(self, ram_mb):
         self.ask_service("start", "Starting the server…",

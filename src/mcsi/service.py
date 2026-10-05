@@ -73,6 +73,7 @@ READ_ONLY = {"status", "log", "get-properties", "list-backups", "players"}
 PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 PROPERTY_KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 JAR_NAME = re.compile(r"^[A-Za-z0-9._\-]{1,64}\.jar$")
+VERSION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\- ]{0,31}$")
 BACKUP_NAME = re.compile(r"^backup-(manual|daily|before-restore|before-update)-[0-9-]+\.tar\.gz$")
 LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\]: ")
 # Server-thread lines only: chat is printed as "<name> text", so a player
@@ -131,7 +132,7 @@ class State:
         self.data = {"desired": "stopped", "ram_mb": DEFAULT_RAM_MB, "version": None,
                      "jar": "server.jar", "owner_uid": None, "migrated": False,
                      "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
-                     "previous_version": None}
+                     "previous_version": None, "pinned": False}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -142,6 +143,9 @@ class State:
 
     def __getitem__(self, key):
         return self.data[key]
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
 
     def update(self, **changes):
         self.data.update(changes)
@@ -401,6 +405,7 @@ class Server:
                  "motd": props.get("motd"), "white_list_on": props.get("white-list") == "true",
                  "autostart": self.state["autostart"], "update_available": self.update_available(),
                  "previous_version": self.state["previous_version"],
+                 "pinned": self.state.get("pinned", False), "latest": self.state["latest"],
                  "can_roll_back": os.path.exists(os.path.join(SERVER_DIR, "server.jar.previous"))}
         backups = self.backups()
         reply["last_backup"] = backups[0]["time"] if backups else None
@@ -423,15 +428,45 @@ class Server:
         except FileNotFoundError:
             return {"ok": True, "lines": [], "seq": 0}
 
-    async def download(self):
-        version, url, sha1 = await asyncio.to_thread(latest_server)
+    async def download(self, version=None):
+        """The latest server, or a chosen version (option 18).
+
+        A chosen version that is not the latest is "pinned": no update alerts
+        for it until the latest is downloaded again. Switching to a chosen
+        version backs the world up first and restarts a running server, since
+        the point is to switch now (players' games must match it).
+        """
+        wanted = None if version in (None, "") else str(version).strip()
+        if wanted is not None and not VERSION_NAME.match(wanted):
+            raise Refused("Type a version like 26.2.")
+        version, url, sha1 = await asyncio.to_thread(server_download, wanted)
+        latest = version if wanted is None else (await asyncio.to_thread(server_download))[0]
+        switching = wanted is not None and (version != self.state["version"]
+                                            or self.state["jar"] != "server.jar")
+        restart = False
+        if switching:
+            if self.has_world():
+                await self.backup("before-update")
+            restart = self.running
+            if restart:
+                await self.stop()
         ensure_server_dir()
-        target = os.path.join(SERVER_DIR, "server.jar")
-        await asyncio.to_thread(fetch_verified, url, sha1, target)
-        self.state.update(version=version, jar="server.jar")
-        log(f"downloaded server {version}")
-        note = "It is used the next time the server starts." if self.running else None
-        return {"ok": True, "version": version, "note": note}
+        try:
+            await asyncio.to_thread(fetch_verified, url, sha1, os.path.join(SERVER_DIR, "server.jar"))
+        except Exception:
+            if restart:  # leave the family's server as it was, not stopped
+                await self.start()
+            raise
+        pinned = version != latest
+        self.state.update(version=version, jar="server.jar", latest=latest,
+                          latest_checked=time.time(), pinned=pinned)
+        log(f"downloaded server {version}" + (" (chosen; pinned)" if pinned else ""))
+        if restart:
+            await self.start()
+            note = "The server is restarting with it."
+        else:
+            note = "It is used the next time the server starts." if self.running else None
+        return {"ok": True, "version": version, "note": note, "pinned": pinned}
 
     async def command(self, text):
         if not self.running:
@@ -559,7 +594,8 @@ class Server:
 
     def update_available(self):
         latest, current = self.state["latest"], self.state["version"]
-        if self.state["jar"] != "server.jar" or not latest or latest == current:
+        if (self.state["jar"] != "server.jar" or self.state.get("pinned")
+                or not latest or latest == current):
             return None
         return latest
 
@@ -803,15 +839,25 @@ def lan_address():
         return None
 
 
-def latest_server():
+def server_download(wanted=None):
+    """(version, url, sha1) of a server jar from Mojang's list: the latest release, or `wanted`."""
     with urllib.request.urlopen(MANIFEST_URL, timeout=20) as r:
         manifest = json.load(r)
-    release = manifest["latest"]["release"]
-    entry = next(v for v in manifest["versions"] if v["id"] == release)
+    version = wanted or manifest["latest"]["release"]
+    entry = next((v for v in manifest["versions"] if v["id"] == version), None)
+    if entry is None:
+        raise Refused(f"There is no Minecraft version called {version}. "
+                      f"Versions look like {manifest['latest']['release']}.")
     with urllib.request.urlopen(entry["url"], timeout=20) as r:
         details = json.load(r)
-    server = details["downloads"]["server"]
-    return release, server["url"], server["sha1"]
+    server = details.get("downloads", {}).get("server")
+    if not server:
+        raise Refused(f"Mojang has no server download for Minecraft {version}.")
+    return version, server["url"], server["sha1"]
+
+
+def latest_server():
+    return server_download()
 
 
 def fetch_verified(url, sha1, target):
@@ -933,7 +979,7 @@ async def main():
             elif name == "log":
                 reply = server.console_log(int(request.get("since", 0)))
             elif name == "download":
-                reply = await server.download()
+                reply = await server.download(request.get("version"))
             elif name == "accept-eula":
                 ensure_server_dir()
                 write_file(os.path.join(SERVER_DIR, "eula.txt"),
