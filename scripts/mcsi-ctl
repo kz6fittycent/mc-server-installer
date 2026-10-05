@@ -1,4 +1,4 @@
 #!/bin/sh
-# 2.0 phase 1 test client (see src/mcsi/ctl.py)
+# Command-line access to the service (see src/mcsi/ctl.py)
 export PYTHONPATH="$SNAP/lib"
 exec /usr/bin/python3 -m mcsi.ctl "$@"

@@ -1,51 +1,41 @@
-"""Phase 1 test client: talks to the background service the way the menu will.
+"""Command-line access to the background service, for testing and support.
 
-    mc-server-installer.ctl status | download | accept-eula | start [RAM_MB]
-                            | stop | command TEXT... | upnp-probe
+    mc-server-installer.ctl REQUEST [key=value ...] [--upload FILE]
+
+For example:  status | log since=0 | download | accept-eula | start ram_mb=4096
+| stop | command text="say hi" | whitelist name=Steve | backup | list-backups
+and, with sudo:  set-owner user=NAME
 """
 
 import json
-import os
-import socket
 import sys
 
-SOCKET_PATH = os.path.join(os.environ["SNAP_COMMON"], "control.sock")
-
-
-def request(payload, timeout=300):
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
-        sock.connect(SOCKET_PATH)
-        sock.sendall((json.dumps(payload) + "\n").encode())
-        data = b""
-        while not data.endswith(b"\n"):
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            data += chunk
-    return json.loads(data)
+from mcsi import client
 
 
 def main(argv):
-    if not argv:
+    if not argv or argv[0] in ("-h", "--help"):
         print(__doc__.strip())
         return 2
-    name, rest = argv[0], argv[1:]
-    payload = {"cmd": name}
-    if name == "start" and rest:
-        payload["ram_mb"] = int(rest[0])
-    elif name == "command":
-        payload["text"] = " ".join(rest)
+    cmd, fields, upload = argv[0], {}, None
+    rest = argv[1:]
+    while rest:
+        item = rest.pop(0)
+        if item == "--upload":
+            upload = rest.pop(0)
+        elif "=" in item:
+            key, value = item.split("=", 1)
+            fields[key] = int(value) if value.isdigit() else value
+        else:
+            print(f"Not key=value: {item}", file=sys.stderr)
+            return 2
     try:
-        reply = request(payload)
-    except (FileNotFoundError, ConnectionRefusedError):
-        print("The background service is not running.", file=sys.stderr)
-        return 1
-    except PermissionError as error:
-        print(f"Not allowed to talk to the service: {error}", file=sys.stderr)
+        reply = client.request(cmd, upload=upload, **fields)
+    except client.ServiceError as error:
+        print(error, file=sys.stderr)
         return 1
     print(json.dumps(reply, indent=2))
-    return 0 if reply.get("ok") else 1
+    return 0
 
 
 if __name__ == "__main__":

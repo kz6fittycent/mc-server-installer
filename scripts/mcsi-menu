@@ -1,0 +1,5 @@
+#!/bin/sh
+# The menu (see src/mcsi/menu.py). $SNAP/bin/python3 is the python part's
+# environment, which has Textual.
+export PYTHONPATH="$SNAP/lib"
+exec "$SNAP/bin/python3" -m mcsi.menu "$@"
