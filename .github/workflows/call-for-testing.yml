@@ -10,6 +10,15 @@ on:
     workflows: ["🧪 Snap Builds"]
     types: [completed]
     branches: [master]
+  # By hand (Actions tab -> Run workflow), from master: publishes a
+  # candidate of master's HEAD. "force" publishes even if nothing in the
+  # snap changed since the last uploaded revision.
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if nothing in the snap changed"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -22,7 +31,9 @@ jobs:
   # those: nothing in the snap changed since the last uploaded revision
   # (the newest snap-rev-<revision> tag), so there's nothing to test.
   changes:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'master'
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'master') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'master')
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.diff.outputs.publish }}
@@ -30,13 +41,20 @@ jobs:
       - name: Checkout the built commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           fetch-tags: true
 
       - name: Did anything in the snap change?
         id: diff
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
+          if [[ "$FORCE" == "true" ]]; then
+            echo "Forced by hand - publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           last="$(git tag --list 'snap-rev-*' --sort=-version:refname | head -1)"
           if [[ -n "$last" ]] && git diff --quiet "$last" HEAD -- . \
               ':(exclude).github' ':(exclude)README.md' ':(exclude).gitignore' ':(exclude)LICENSE'; then
@@ -64,7 +82,7 @@ jobs:
       - name: Checkout the built commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -106,7 +124,7 @@ jobs:
       # "changes" job above diffs against the newest one.
       - name: Record the commit this revision was built from
         run: |
-          git tag "snap-rev-${{ steps.upload.outputs.revision }}" "${{ github.event.workflow_run.head_sha }}"
+          git tag "snap-rev-${{ steps.upload.outputs.revision }}" "${{ github.event.workflow_run.head_sha || github.sha }}"
           git push origin "snap-rev-${{ steps.upload.outputs.revision }}"
 
   open-issue:
