@@ -116,9 +116,9 @@ once they support it (usually within days), and option 18 can only choose
 versions they support.
 
 Bedrock is changing how it connects to servers (from Minecraft 26.60). For the
-new way to work, the snap needs to read which disks are mounted, which the Snap
-Store doesn't allow by itself yet. If the menu asks for it, run this once and
-restart the server:
+new way to work, the snap needs permission to read which disks are mounted. Snap
+permissions like this one are yours to give, so it isn't switched on by itself.
+If the menu asks for it, run this once and restart the server:
 
 ```
 sudo snap connect mc-server-installer:mount-observe

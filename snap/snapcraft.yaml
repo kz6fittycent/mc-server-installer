@@ -84,8 +84,8 @@ apps:
       - network
       - network-bind
       # Bedrock (Geyser's NetherNet) asks Java which filesystem holds its
-      # files, which reads /proc/self/mounts. Not connected by itself until
-      # the store grants auto-connection; the menu says how to connect it.
+      # files, which reads /proc/self/mounts. Deliberately not auto-connected
+      # (the owner connects it once); the menu says how.
       - mount-observe
 
   # The menu: a front end for the service. It never runs the server itself.

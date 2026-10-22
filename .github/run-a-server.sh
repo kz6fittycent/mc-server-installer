@@ -31,7 +31,7 @@ stop_cleanly() {
 
 echo "== Install ($(uname -m))"
 sudo snap install --dangerous "$SNAP_FILE"
-# Not connected by itself until the store grants it; Bedrock's NetherNet needs it.
+# Not connected by itself (by choice: the owner connects it once); Bedrock's NetherNet needs it.
 sudo snap connect "$SNAP_NAME:mount-observe"
 for _ in $(seq 30); do $C status >/dev/null 2>&1 && break; sleep 2; done
 snap services "$SNAP_NAME"
