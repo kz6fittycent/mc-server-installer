@@ -26,6 +26,11 @@ associated with Mojang or Microsoft. You must agree to the
 sudo snap install mc-server-installer
 ```
 
+It runs on 64-bit PCs (amd64) and on 64-bit ARM computers (arm64), such as a
+**Raspberry Pi 4 or 5** with 4 GB of memory or more and a 64-bit Ubuntu or
+Raspberry Pi OS; give the server 2 or 3 GB. 32-bit systems aren't supported. More
+in the wiki: [Raspberry Pi and ARM](https://github.com/kz6fittycent/mc-server-installer/wiki/Raspberry-Pi-and-ARM).
+
 Then open a terminal and run:
 
 ```

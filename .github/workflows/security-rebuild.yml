@@ -19,6 +19,10 @@ name: 🛡️ Security Rebuild
 # Nothing happens while a security-rebuild issue is still open, so an
 # unreleased rebuild isn't rebuilt again every day.
 #
+# Every architecture on stable (amd64, arm64) is checked and, when any has
+# notices, all are rebuilt - each on its own kind of machine - so stable
+# stays one version built from one commit.
+#
 # Run it by hand from the Actions tab (Run workflow):
 # - dry_run: checks and reports, but builds, uploads, and opens nothing
 # - force: rebuilds even if there are no notices (to test the pipeline)
@@ -56,8 +60,9 @@ jobs:
     outputs:
       rebuild: ${{ steps.decide.outputs.rebuild }}
       version: ${{ steps.stable.outputs.version }}
-      stable_revision: ${{ steps.stable.outputs.revision }}
+      stable_revision: ${{ steps.stable.outputs.revisions }}
       commit: ${{ steps.commit.outputs.commit }}
+      matrix: ${{ steps.stable.outputs.matrix }}
     steps:
       - name: Checkout (full history and tags, to find the release commit)
         uses: actions/checkout@v7
@@ -74,42 +79,72 @@ jobs:
             sleep 30
           done
 
-      - name: Download the stable snap
+      - name: Download the stable snap of every architecture
         id: stable
         run: |
-          snap download "$SNAP_NAME" --channel=stable --basename=stable
-          version="$(unsquashfs -cat stable.snap meta/snap.yaml | sed -n 's/^version: *//p' | tr -d "'\"")"
-          revision="$(snap info "$SNAP_NAME" | sed -n 's#^ *latest/stable: *[^ ]* *[^ ]* *(\([0-9]*\)).*#\1#p')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
-          echo "Stable: version $version, revision $revision"
+          # The store's public info API lists each architecture's revision
+          # and download (snap download only fetches this machine's).
+          curl -sf -H "Snap-Device-Series: 16" \
+            "https://api.snapcraft.io/v2/snaps/info/${SNAP_NAME}?fields=revision,version,download" > info.json
+          python3 - <<'EOF'
+          import json, os, urllib.request
+          runners = {"amd64": "ubuntu-latest", "arm64": "ubuntu-24.04-arm"}
+          stable = [c for c in json.load(open("info.json"))["channel-map"]
+                    if c["channel"]["track"] == "latest" and c["channel"]["name"] == "stable"]
+          for c in stable:
+              arch = c["channel"]["architecture"]
+              urllib.request.urlretrieve(c["download"]["url"], f"stable-{arch}.snap")
+              open(f"stable-{arch}.revision", "w").write(str(c["revision"]))
+              print(f"Stable {arch}: version {c['version']}, revision {c['revision']}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={stable[0]['version']}\n")
+              out.write("revisions=" + ", ".join(f"{c['revision']} ({c['channel']['architecture']})"
+                                                 for c in stable) + "\n")
+              out.write("matrix=" + json.dumps([{"arch": c["channel"]["architecture"],
+                                                 "runner": runners[c["channel"]["architecture"]]}
+                                                for c in stable]) + "\n")
+          EOF
 
       - name: Check for security notices
         run: |
-          review-tools.snap-check-notices stable.snap | tee notices-raw.json
+          for snap in stable-*.snap; do
+            review-tools.snap-check-notices "$snap" | tee "${snap%.snap}.notices.json"
+          done
           # {"<snap>": {"<revision>": {"<package>": ["USN-...", ...]}}} - empty when none.
+          # Merged across architectures: a fix for any of them rebuilds all.
           python3 - <<'EOF'
-          import json
-          raw = json.load(open("notices-raw.json"))
-          notices = next(iter(next(iter(raw.values())).values()), {}) if raw else {}
+          import glob, json
+          notices = {}
+          for path in glob.glob("stable-*.notices.json"):
+              raw = json.load(open(path))
+              for package, usns in (next(iter(next(iter(raw.values())).values()), {}) if raw else {}).items():
+                  notices[package] = sorted(set(notices.get(package, [])) | set(usns))
           json.dump(notices, open("notices.json", "w"), indent=2, sort_keys=True)
           print(f"{sum(len(v) for v in notices.values())} notice(s) across {len(notices)} package(s)")
           EOF
 
       - name: Find the commit stable was built from
         id: commit
-        env:
-          REVISION: ${{ steps.stable.outputs.revision }}
         run: |
           # Refuses rather than guessing (e.g. from the v* tag, which
           # master has usually moved past): rebuilding the wrong commit
           # would ship different code under the stable version number.
-          if ! commit="$(git rev-parse --verify --quiet "refs/tags/snap-rev-${REVISION}^{commit}")"; then
-            echo "::error::No snap-rev-${REVISION} tag - don't know which commit stable revision ${REVISION} was built from. Tag it by hand: git tag snap-rev-${REVISION} <commit> && git push origin snap-rev-${REVISION}"
+          commits=""
+          for file in stable-*.revision; do
+            revision="$(cat "$file")"
+            if ! commit="$(git rev-parse --verify --quiet "refs/tags/snap-rev-${revision}^{commit}")"; then
+              echo "::error::No snap-rev-${revision} tag - don't know which commit stable revision ${revision} was built from. Tag it by hand: git tag snap-rev-${revision} <commit> && git push origin snap-rev-${revision}"
+              exit 1
+            fi
+            arch="${file#stable-}"
+            echo "Stable revision ${revision} (${arch%.revision}) was built from: $(git log -1 --format='%h %s' "$commit")"
+            commits+="$commit"$'\n'
+          done
+          if [[ "$(sort -u <<< "${commits%$'\n'}" | wc -l)" != 1 ]]; then
+            echo "::error::The architectures on stable were built from different commits - release them together first."
             exit 1
           fi
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          echo "Stable revision ${REVISION} was built from: $(git log -1 --format='%h %s' "$commit")"
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
 
       - name: Decide
         id: decide
@@ -140,14 +175,17 @@ jobs:
           name: notices
           path: notices.json
 
+  # One leg per architecture on stable; each leaves its revision in a
+  # "revision-<arch>" artifact (a matrix job's outputs keep only one leg's).
   rebuild:
     needs: check
     if: needs.check.outputs.rebuild == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
-    outputs:
-      revision: ${{ steps.upload.outputs.revision }}
     steps:
       - name: Checkout the release commit
         uses: actions/checkout@v7
@@ -190,6 +228,14 @@ jobs:
           git tag "snap-rev-${{ steps.upload.outputs.revision }}" "${{ needs.check.outputs.commit }}"
           git push origin "snap-rev-${{ steps.upload.outputs.revision }}"
 
+      - name: Leave the revision for the issue
+        run: echo "${{ steps.upload.outputs.revision }}" > "revision-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: revision-${{ matrix.arch }}
+          path: revision-${{ matrix.arch }}
+
   open-issue:
     needs: [check, rebuild]
     runs-on: ubuntu-latest
@@ -201,12 +247,29 @@ jobs:
         with:
           name: notices
 
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: revision-*
+          merge-multiple: true
+
+      - name: Collect the revisions
+        id: revisions
+        run: |
+          list="" readable=""
+          for file in revision-*; do
+            list+="${list:+,}$(cat "$file")"
+            readable+="${readable:+, }$(cat "$file") (${file#revision-})"
+          done
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "readable=$readable" >> "$GITHUB_OUTPUT"
+
       - name: Open the call for testing issue
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.check.outputs.version }}
           STABLE_REVISION: ${{ needs.check.outputs.stable_revision }}
-          REVISION: ${{ needs.rebuild.outputs.revision }}
+          REVISION: ${{ steps.revisions.outputs.list }}
+          READABLE: ${{ steps.revisions.outputs.readable }}
           COMMIT: ${{ needs.check.outputs.commit }}
         run: |
           for label in call-for-testing security-rebuild; do
@@ -228,13 +291,13 @@ jobs:
           body=$(cat <<EOF
           A security rebuild of Minecraft Server Installer is ready for testing.
 
-          Ubuntu has published security fixes for packages bundled in the current stable snap (revision ${STABLE_REVISION}). This build is the **same version, ${VERSION}**, rebuilt from the commit stable was built from (\`${COMMIT:0:7}\`) so it picks up those fixes. Nothing else has changed.
+          Ubuntu has published security fixes for packages bundled in the current stable snap (revisions ${STABLE_REVISION}). This build is the **same version, ${VERSION}**, rebuilt from the commit stable was built from (\`${COMMIT:0:7}\`) so it picks up those fixes. Nothing else has changed.
 
           ## Fixed notices
 
           ${notices}
 
-          **Revision:** ${REVISION} · **Channel:** \`latest/candidate\`
+          **Revisions:** ${READABLE} · **Channel:** \`latest/candidate\`
 
           ## How to test
 
@@ -260,6 +323,6 @@ jobs:
           )
 
           gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "Security rebuild: v${VERSION} (revision ${REVISION})" \
+            --title "Security rebuild: v${VERSION} (revisions ${REVISION})" \
             --label call-for-testing --label security-rebuild \
             --body "$body"

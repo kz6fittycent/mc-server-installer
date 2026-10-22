@@ -68,16 +68,25 @@ jobs:
 
   # Rebuilds from scratch rather than reusing an artifact from the
   # triggering run, since snap-builds doesn't publish one - same commit
-  # though, checked out via head_sha.
+  # though, checked out via head_sha. One build and one store revision per
+  # architecture, each on its own kind of machine; each leg leaves its
+  # revision in a "revision-<arch>" artifact for the jobs below (a matrix
+  # job's outputs would only keep one leg's).
   publish-candidate:
     needs: changes
     if: needs.changes.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      revision: ${{ steps.upload.outputs.revision }}
+      version: ${{ steps.version.outputs.version }}  # the same on every leg
     steps:
       - name: Checkout the built commit
         uses: actions/checkout@v7
@@ -127,6 +136,14 @@ jobs:
           git tag "snap-rev-${{ steps.upload.outputs.revision }}" "${{ github.event.workflow_run.head_sha || github.sha }}"
           git push origin "snap-rev-${{ steps.upload.outputs.revision }}"
 
+      - name: Leave the revision for the jobs below
+        run: echo "${{ steps.upload.outputs.revision }}" > "revision-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: revision-${{ matrix.arch }}
+          path: revision-${{ matrix.arch }}
+
   open-issue:
     needs: publish-candidate
     runs-on: ubuntu-latest
@@ -134,7 +151,25 @@ jobs:
       issues: write
     outputs:
       issue-number: ${{ steps.create.outputs.issue-number }}
+      revisions: ${{ steps.revisions.outputs.list }}
     steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: revision-*
+          merge-multiple: true
+
+      - name: Collect the revisions
+        id: revisions
+        run: |
+          # "1042,1043" for /promote, and "1042 (amd64), 1043 (arm64)" to read.
+          list="" readable=""
+          for file in revision-*; do
+            list+="${list:+,}$(cat "$file")"
+            readable+="${readable:+, }$(cat "$file") (${file#revision-})"
+          done
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "readable=$readable" >> "$GITHUB_OUTPUT"
+
       - name: Ensure the call-for-testing label exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -150,7 +185,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.publish-candidate.outputs.version }}
-          REVISION: ${{ needs.publish-candidate.outputs.revision }}
+          REVISION: ${{ steps.revisions.outputs.list }}
+          READABLE: ${{ steps.revisions.outputs.readable }}
         run: |
           # The "/promote <revision>[,<revision>...] stable [done]" syntax
           # here is what promote-to-stable.yml parses back out of the
@@ -160,7 +196,7 @@ jobs:
           A new candidate build of Minecraft Server Installer is ready for testing.
 
           **Version:** ${VERSION}
-          **Revision:** ${REVISION}
+          **Revisions:** ${READABLE}
           **Channel:** \`latest/candidate\`
 
           ## How to test
@@ -177,7 +213,8 @@ jobs:
           3. Join from Minecraft at the address shown at the top of the menu.
           4. Close the menu, log out, or restart the computer: the server should keep running, or come back by itself.
           5. Try Players (\`p\`), Backups (\`b\`) and Settings (\`s\`).
-          6. An automated smoke test (the background service starts by itself; Java and the menu load) will be added to this issue shortly.
+          6. On a Raspberry Pi or other ARM board with a 64-bit OS, the same commands install the arm64 build.
+          7. An automated smoke test on each architecture (the background service starts by itself; Java and the menu load) will be added to this issue shortly.
 
           ## How to release it
 
@@ -191,7 +228,7 @@ jobs:
           - \`stable\` - required as shown; this command only ever promotes to \`stable\`
           - \`done\` (optional) - also closes this issue once released; leave it off to release and keep the issue open for further testing
 
-          For this revision, that's:
+          For this build (every architecture), that's:
 
           \`\`\`
           /promote ${REVISION} stable done
@@ -206,7 +243,7 @@ jobs:
 
           url=$(gh issue create \
             --repo "${{ github.repository }}" \
-            --title "Call for testing: v${VERSION} (revision ${REVISION})" \
+            --title "Call for testing: v${VERSION} (revisions ${REVISION})" \
             --label "call-for-testing" \
             --body "$body")
           echo "issue-number=$(basename "$url")" >> "$GITHUB_OUTPUT"
@@ -216,13 +253,29 @@ jobs:
   # started by itself and answers, and that Java and the menu load.
   smoke-test:
     needs: [publish-candidate, open-issue]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       issues: write
     steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: revision-${{ matrix.arch }}
+
+      - name: Which revision this architecture got
+        id: revision
+        run: echo "revision=$(cat "revision-${{ matrix.arch }}")" >> "$GITHUB_OUTPUT"
+
       - name: Install the candidate revision
         env:
-          REVISION: ${{ needs.publish-candidate.outputs.revision }}
+          REVISION: ${{ steps.revision.outputs.revision }}
         run: |
           # Retried: the Snap Store's CDN has had transient failures.
           for attempt in 1 2 3; do
@@ -255,12 +308,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ needs.open-issue.outputs.issue-number }}
-          REVISION: ${{ needs.publish-candidate.outputs.revision }}
+          REVISION: ${{ steps.revision.outputs.revision }}
+          ALL_REVISIONS: ${{ needs.open-issue.outputs.revisions }}
         run: |
           gh issue comment "${ISSUE_NUMBER}" \
             --repo "${{ github.repository }}" \
             --body "$(cat <<EOF
-          Automated smoke test of revision ${REVISION}, installed fresh from the store: the background service started by itself and answers, and Java and the menu load.
+          Automated smoke test of revision ${REVISION} (${{ matrix.arch }}), installed fresh from the store: the background service started by itself and answers, and Java and the menu load.
 
           \`\`\`
           $(cat smoke.txt)
@@ -268,7 +322,7 @@ jobs:
 
           ---
 
-          Looks good? Comment \`/promote ${REVISION} stable done\` on this issue to release it to \`latest/stable\` and close this issue (drop \`done\` to release without closing).
+          Looks good? Comment \`/promote ${ALL_REVISIONS} stable done\` on this issue to release every architecture to \`latest/stable\` and close this issue (drop \`done\` to release without closing).
           EOF
           )"
 
@@ -281,4 +335,4 @@ jobs:
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           gh issue comment "${ISSUE_NUMBER}" \
             --repo "${{ github.repository }}" \
-            --body "The automated smoke test failed for this revision - see the [workflow run](${run_url}). Check whether it's a store/CDN hiccup or a real problem (a bundled tool missing or not running) before promoting."
+            --body "The automated smoke test failed for the ${{ matrix.arch }} revision - see the [workflow run](${run_url}). Check whether it's a store/CDN hiccup or a real problem (a bundled tool missing or not running) before promoting."

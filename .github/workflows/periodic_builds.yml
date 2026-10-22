@@ -12,10 +12,16 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Both architectures, each on its own kind of machine (see snap-builds).
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [20.x]    
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v7
@@ -36,6 +42,7 @@ jobs:
       - uses: github/codeql-action/upload-sarif@v4.38.2
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
+          category: snap-${{ matrix.arch }}
         
       - uses: diddlesnaps/snapcraft-review-action@v1
         with:

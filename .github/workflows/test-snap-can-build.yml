@@ -5,13 +5,20 @@ on:
     branches: '*'
   pull_request:
     branches: '*'
-    
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Each architecture is built on its own kind of machine (snapcraft.yaml:
+    # build-on = build-for). GitHub's ARM runners are free for public repos.
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [20.x]    
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v7
@@ -22,9 +29,9 @@ jobs:
 
       - uses: snapcore/action-build@v1
         id: build
-        
+
       - uses: anchore/scan-action@v7
-        id: scan            
+        id: scan
 
       - uses: diddlesnaps/snapcraft-review-action@v1
         with:
@@ -33,3 +40,10 @@ jobs:
           # Plugs and Slots declarations to override default denial (requires store assertion to publish)
           # plugs: ./plug-declaration.json
           # slots: ./slot-declaration.json
+
+      # Not just "it builds": install it and run a real Minecraft server on
+      # this architecture - the bundled Java, Fabric and Geyser included.
+      - name: Run a server with the built snap
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+        run: .github/run-a-server.sh

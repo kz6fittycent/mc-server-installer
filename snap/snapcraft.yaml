@@ -28,6 +28,8 @@ description: |
   - The server runs as an unprivileged user, and the only open port is the game's
     (25565; with Bedrock on, also 19132 and 19133).
 
+  Runs on 64-bit PCs and on 64-bit ARM, such as a Raspberry Pi 4 or 5.
+
   Moving from an older version? The first time you open the menu it offers to
   bring your world, whitelist and operators over. The original stays where it was.
 
@@ -46,10 +48,17 @@ base: core24
 grade: stable
 confinement: strict
 compression: lzo
+# arm64: Raspberry Pi 4 and 5 (and other ARM boards) with a 64-bit OS.
+# Each is built natively, on a machine of its own architecture (CI uses
+# GitHub's ARM runners). Not armhf: a 32-bit Java can't give Minecraft
+# enough memory.
 platforms:
   amd64:
     build-on: [amd64]
     build-for: [amd64]
+  arm64:
+    build-on: [arm64]
+    build-for: [arm64]
 
 # The 2.0 background service runs the Minecraft server as this unprivileged
 # user, never as root.
@@ -110,7 +119,8 @@ parts:
             
     stage-packages:
       - openjdk-25-jre-headless
-      - libhsdis0-fcml
+      - to amd64:
+          - libhsdis0-fcml  # x86 only; Ubuntu has no ARM build
 
   publish:
     plugin: dump
