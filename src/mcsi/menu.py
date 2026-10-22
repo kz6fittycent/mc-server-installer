@@ -28,6 +28,8 @@ from mcsi import client, migrate
 
 REAL_HOME = os.environ.get("SNAP_REAL_HOME", os.path.expanduser("~"))
 PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")  # the same rule as the service
+MOUNT_OBSERVE = "sudo snap connect mc-server-installer:mount-observe"
+BEDROCK_HINT = "Bedrock players (phones, tablets, consoles): a dot, then their gamertag, like .Steve"
 EULA_URL = "https://aka.ms/MinecraftEULA"
 
 OPTIONS = {
@@ -73,9 +75,18 @@ was running before.
 
 - **Who can play:** anyone at home, unless you choose otherwise. To allow
   only certain players, add them (option 14, or press **p**) and turn on the
-  whitelist in Settings (press **s**). Do that before letting people join
-  over the internet.
-- **Operators** (option 15) can use cheats and server commands in the game.
+  whitelist (press **p**, or Settings with **s**). Do that before letting
+  people join over the internet. Operators can always join.
+- **Operators** (option 15) can type server commands in the game's chat,
+  such as `/time set day`, `/gamemode creative Steve` or
+  `/give Steve minecraft:diamond 5`, without coming to this computer. Make
+  yourself one.
+- **Bedrock players** (phones, tablets, Xbox, PlayStation, Switch): turn
+  them on in Settings (**s**). They choose **Servers**, then **Add Server**,
+  with the same address and port 19132, and sign in with their own Microsoft
+  account. For the whitelist and operators, type a dot before their
+  gamertag, like `.Steve`, as it shows in the game. Consoles can't add
+  servers by themselves; phones, tablets and Windows can.
 - **Backups** (press **b**): daily while the server runs (the newest 7 are
   kept), before every update and restore, and whenever you choose option 10,
   which also puts a copy in your Home folder. Restore any of them from here.
@@ -153,6 +164,11 @@ def status_text(s):
     if s.get("address"):
         port = "" if s["port"] == 25565 else f":{s['port']}"
         lines.append(f"Join from Minecraft at: [b]{s['address']}{port}[/]")
+        if s.get("bedrock"):
+            lines.append(f"Bedrock (phones, tablets): [b]{s['address']}[/] port [b]{s['bedrock_port']}[/]")
+    if s.get("bedrock_connect"):
+        lines.append(f"[b yellow]Newer Bedrock versions need this, once, in a terminal:[/] "
+                     f"[b]{MOUNT_OBSERVE}[/] - then restart the server.")
     if not s["you_may_change"]:
         lines.append(f"[yellow]You can watch this server; only {s['owner']} can change it.[/]")
     if s.get("pinned") and s.get("latest") and s.get("version") != s.get("latest"):
@@ -167,6 +183,15 @@ def status_text(s):
     if s.get("problem"):
         lines.append(f"[b red]{s['problem']}[/]")
     return "\n".join(lines)
+
+
+def player_question(action, status):
+    question = {"whitelist": "Which Minecraft name should be allowed to join?",
+                "unwhitelist": "Which player should no longer be allowed to join?",
+                "op": "Which Minecraft name should become an operator? Operators can use cheats "
+                      "and type server commands in the game's chat.",
+                "deop": "Which operator should go back to being a normal player?"}[action]
+    return question + (f"\n\n[dim]{BEDROCK_HINT}[/]" if status and status.get("bedrock") else "")
 
 
 # --- dialogs ----------------------------------------------------------------
@@ -355,7 +380,7 @@ class Setup(Screen):
     """First run: one question per step, then download, start, and how to join."""
 
     BINDINGS = [Binding("escape", "app.pop_screen", "Leave setup for now")]
-    STEPS = ("welcome", "eula", "name", "memory", "players", "ready", "working", "done")
+    STEPS = ("welcome", "eula", "name", "memory", "you", "players", "ready", "working", "done")
 
     def __init__(self, status):
         super().__init__()
@@ -383,7 +408,7 @@ class Setup(Screen):
         field = self.query_one("#step-input", Input)
         next_button = self.query_one("#next", Button)
         back_button = self.query_one("#back", Button)
-        field.display = name in ("name", "memory", "players")
+        field.display = name in ("name", "memory", "you", "players")
         back_button.display = name not in ("welcome", "working", "done")
         next_button.display = name != "working"
         next_button.label = {"eula": "I agree", "ready": "Set it up", "done": "Go to the menu"}.get(name, "Next")
@@ -405,20 +430,27 @@ class Setup(Screen):
                         f"{self.memory_reason}. You can change this later in Settings.")
             field.value = self.answers.get("memory", memory_label(self.memory).replace(" ", ""))
             field.placeholder = "for example 2G or 4096M"
+        elif name == "you":
+            text.update("[b]Your Minecraft name[/]\n\nYou become the server's [b]operator[/]: in the "
+                        "game you can type commands in the chat, like [b]/time set day[/] or "
+                        "[b]/gamemode creative[/], without coming back to this computer.\n\n"
+                        "Leave it empty to skip; you can add operators later (press p).")
+            field.value = self.answers.get("you", "")
+            field.placeholder = "your name in Minecraft: Java Edition"
         elif name == "players":
             text.update("[b]Who can play?[/]\n\nLeave this empty and anyone at home can join - "
                         "that's how most families use it.\n\nOr, to allow only certain players, type "
-                        "their Minecraft names, separated by commas. The [b]first name[/] becomes the "
-                        "operator, who can use cheats and server commands in the game. You can change "
-                        "this later (press p).")
+                        "the other players' Minecraft names, separated by commas"
+                        + (f" ({self.answers['you']} is included)" if self.answers.get("you") else "")
+                        + ". You can change this later (press p).")
             field.value = self.answers.get("players", "")
             field.placeholder = "for example Steve, Alex"
         elif name == "ready":
-            names = self.answers["names"]
-            players = (f"only {', '.join(names)} (operator: {names[0]})" if names
-                       else "anyone at home can join")
+            you, names = self.answers["you"], self.answers["names"]
+            players = (f"only {', '.join(self.allowed())}" if names else "anyone at home can join")
             text.update(f"[b]Ready[/]\n\nServer name: {self.answers['motd']}\nMemory: "
-                        f"{memory_label(self.answers['ram_mb'])}\nPlayers: {players}"
+                        f"{memory_label(self.answers['ram_mb'])}\nPlayers: {players}\n"
+                        f"Operator: {you or 'nobody yet'}"
                         "\n\nThis downloads the latest Minecraft server and starts it.")
         if field.display:
             field.focus()
@@ -452,6 +484,12 @@ class Setup(Screen):
                 self.notify("Type an amount like 2G or 4096M (at least 1G).", severity="error")
                 return
             self.answers.update(memory=value, ram_mb=ram_mb)
+        elif name == "you":
+            if value and not PLAYER_NAME.match(value):
+                self.notify("Minecraft names are 3 to 16 letters, digits or underscores.",
+                            severity="error", timeout=8)
+                return
+            self.answers["you"] = value
         elif name == "players":
             names = [n.strip() for n in value.split(",") if n.strip()]
             bad = [n for n in names if not PLAYER_NAME.match(n)]
@@ -464,6 +502,11 @@ class Setup(Screen):
         self.show()
         if self.STEPS[self.step] == "working":
             self.set_up()
+
+    def allowed(self):
+        """Who the whitelist lets in: you, then the others (once each)."""
+        names = ([self.answers["you"]] if self.answers["you"] else []) + self.answers["names"]
+        return list(dict.fromkeys(names))
 
     @work(thread=True)
     def set_up(self):
@@ -481,11 +524,12 @@ class Setup(Screen):
             say("✓ Saved the server name and memory")
             if not a["names"]:
                 say("✓ Anyone at home can join")
-            for number, player in enumerate(a["names"]):
+            for player in self.allowed() if a["names"] else []:
                 client.request("whitelist", name=player)
-                if number == 0:
-                    client.request("op", name=player)
-                say(f"✓ {player} can play" + (" (operator)" if number == 0 else ""))
+                say(f"✓ {player} can play")
+            if a["you"]:
+                client.request("op", name=a["you"])
+                say(f"✓ {a['you']} is the operator")
             say("… Downloading the Minecraft server")
             version = client.request("download")["version"]
             say(f"✓ Downloaded Minecraft {version}")
@@ -515,12 +559,14 @@ class Players(ModalScreen[None]):
             with Horizontal(classes="buttons"):
                 yield Button("Add player", variant="primary", id="whitelist")
                 yield Button("Remove player", id="unwhitelist")
+                yield Button("Turn whitelist on", id="toggle")
             with Horizontal(classes="buttons"):
                 yield Button("Make operator", id="op")
                 yield Button("Remove operator", id="deop")
                 yield Button("Close", id="close")
 
     def on_mount(self):
+        self.white_list_on = None
         self.load()
 
     @work(thread=True, exclusive=True)
@@ -530,35 +576,36 @@ class Players(ModalScreen[None]):
         except client.ServiceError as error:
             text = f"[b red]{error}[/]"
         else:
+            self.white_list_on = p["white_list_on"]
+            if p["white_list_on"]:
+                who = "Only the allowed players and operators can join (the whitelist is on)."
+            elif p["whitelist"]:
+                who = ("[b yellow]The whitelist is off[/], so anyone at home can join - not only "
+                       "the players allowed above. Turn it on to keep everyone else out.")
+            else:
+                who = "Anyone at home can join. To allow only certain players, add them and turn on the whitelist."
             text = ("[b]Players[/]\n\n"
                     f"Allowed to join: {', '.join(p['whitelist']) or 'nobody yet'}\n"
-                    f"Operators: {', '.join(p['ops']) or 'none'}\n"
-                    f"Playing now: {', '.join(p['online']) or 'nobody'}\n\n"
-                    + ("Only the allowed players can join (the whitelist is on)." if p["white_list_on"]
-                       else "Anyone at home can join. To allow only the players listed above, "
-                            "turn on the whitelist in Settings (s)."))
-        self.app.call_from_thread(self.query_one("#players-text", Static).update, text)
+                    f"Operators: {', '.join(p['ops']) or 'none - make yourself one to use commands in the game'}\n"
+                    f"Playing now: {', '.join(p['online']) or 'nobody'}\n\n{who}")
+        self.app.call_from_thread(self.show, text)
+
+    def show(self, text):
+        self.query_one("#players-text", Static).update(text)
+        toggle = self.query_one("#toggle", Button)
+        toggle.display = self.white_list_on is not None
+        toggle.label = "Turn whitelist off" if self.white_list_on else "Turn whitelist on"
 
     def on_button_pressed(self, event):
         action = event.button.id
         if action == "close":
             self.dismiss(None)
             return
-        question = {"whitelist": "Which Minecraft name should be allowed to join?",
-                    "unwhitelist": "Which player should no longer be allowed to join?",
-                    "op": "Which player should become an operator? Operators can use cheats "
-                          "and server commands.",
-                    "deop": "Which operator should go back to being a normal player?"}[action]
-        self.app.push_screen(Ask(question), lambda name: name and self.change(action, name))
-
-    @work(thread=True)
-    def change(self, action, name):
-        try:
-            reply = client.request(action, name=name)
-            self.app.call_from_thread(self.app.notify, "\n".join(reply.get("reply") or []) or "Done.")
-        except client.ServiceError as error:
-            self.app.call_from_thread(self.app.notify, str(error), severity="error", timeout=8)
-        self.load()
+        if action == "toggle":
+            self.app.set_white_list(not self.white_list_on, then=self.load)
+            return
+        self.app.push_screen(Ask(player_question(action, self.app.status)),
+                             lambda name: name and self.app.player(action, name, then=self.load))
 
     def key_escape(self):
         self.dismiss(None)
@@ -670,6 +717,9 @@ class Settings(ModalScreen[None]):
                     yield Switch(s["white_list_on"], id="white_list")
                     yield Label("Only allowed players can join (whitelist)")
                 with Horizontal(classes="switch-row"):
+                    yield Switch(s.get("bedrock", False), id="bedrock")
+                    yield Label("Bedrock players can join (phones, tablets, consoles)")
+                with Horizontal(classes="switch-row"):
                     yield Switch(s["autostart"], id="autostart")
                     yield Label("Start the server when the computer starts")
                 if s.get("can_roll_back"):
@@ -694,11 +744,17 @@ class Settings(ModalScreen[None]):
             if not ram_mb or ram_mb < 1024:
                 self.notify("Type a memory amount like 2G or 4096M (at least 1G).", severity="error")
                 return
+            # Only the switches changed here: the status this screen opened with can
+            # be a moment old (the whitelist may just have been turned on in Players).
+            changes = {key: self.query_one(f"#{key}", Switch).value
+                       for key, was in (("white_list", self.status["white_list_on"]),
+                                        ("bedrock", self.status.get("bedrock", False)),
+                                        ("autostart", self.status["autostart"]))
+                       if self.query_one(f"#{key}", Switch).value != was}
             self.app.ask_service(
-                "settings", done=lambda r: "Settings saved. " + (r.get("note") or ""),
-                motd=self.query_one("#motd", Input).value.strip(), ram_mb=ram_mb,
-                white_list=self.query_one("#white_list", Switch).value,
-                autostart=self.query_one("#autostart", Switch).value)
+                "settings", "Getting Bedrock support…" if changes.get("bedrock") else None,
+                done=lambda r: "Settings saved. " + (r.get("note") or ""),
+                motd=self.query_one("#motd", Input).value.strip(), ram_mb=ram_mb, **changes)
             self.dismiss(None)
 
     def key_escape(self):
@@ -867,21 +923,12 @@ class Menu(App):
                                      "The world is saved first."),
                              lambda yes: yes and self.ask_service(
                                  "stop", "Saving the world and stopping…", "The server has stopped."))
-        elif number == 14:
-            self.push_screen(Ask("Which Minecraft name should be allowed to join?"),
-                             lambda name: name and self.player("whitelist", name))
+        elif number in (14, 15, 16, 17):
+            action = {14: "whitelist", 15: "op", 16: "deop", 17: "unwhitelist"}[number]
+            self.push_screen(Ask(player_question(action, self.status)),
+                             lambda name: name and self.player(action, name))
         elif number == 18:
             self.push_screen(Ask("Specify server version (e.g. 26.2):", "26.2"), self.choose_version)
-        elif number == 17:
-            self.push_screen(Ask("Which player should no longer be allowed to join?"),
-                             lambda name: name and self.player("unwhitelist", name))
-        elif number == 15:
-            self.push_screen(Ask("Which Minecraft name should become an operator? "
-                                 "Operators can use cheats and server commands."),
-                             lambda name: name and self.player("op", name))
-        elif number == 16:
-            self.push_screen(Ask("Which operator should go back to being a normal player?"),
-                             lambda name: name and self.player("deop", name))
 
     @work(thread=True)
     def choose_version(self, version):
@@ -933,9 +980,40 @@ class Menu(App):
             return
         self.start(ram_mb)
 
-    def player(self, action, name):
-        self.ask_service(action, done=lambda r: "\n".join(r.get("reply") or []) or "Done.",
-                         name=name)
+    @work(thread=True)
+    def player(self, action, name, then=None):
+        """Change a player; adding one while the whitelist is off offers to turn it on,
+        or the list would keep nobody out."""
+        try:
+            reply = client.request(action, name=name)
+            self.call_from_thread(self.notify, "\n".join(reply.get("reply") or []) or "Done.",
+                                  timeout=8)
+            listed = client.request("players") if action == "whitelist" else None
+        except client.ServiceError as error:
+            self.call_from_thread(self.notify, str(error), severity="error", timeout=10)
+            listed = None
+        if then:
+            self.call_from_thread(then)
+        if listed and not listed["white_list_on"]:
+            # The server may not have saved the name just added yet.
+            names = listed["whitelist"] + [n for n in [name] if n.lower() not in
+                                           {w.lower() for w in listed["whitelist"]}]
+            missing = "" if listed["ops"] else (
+                "\n\n[yellow]Nobody is an operator yet, and only listed players will get in: add "
+                "your own name too (operators can always join).[/]")
+            self.call_from_thread(self.push_screen, Confirm(
+                "[b]The whitelist is off[/], so anyone at home can still join, listed or not.\n\n"
+                f"Turn it on now? Then only {', '.join(names)} and operators can join."
+                + missing, yes="Turn it on", no="Not now"),
+                lambda yes: yes and self.set_white_list(True, then=then))
+
+    def set_white_list(self, on, then=None):
+        def done(reply):  # runs in ask_service's thread
+            if then:
+                self.call_from_thread(then)
+            return ("Whitelist on: only allowed players and operators can join." if on
+                    else "Whitelist off: anyone at home can join.")
+        self.ask_service("settings", done=done, white_list=on)
 
     @work(thread=True)
     def use_jar(self, path):

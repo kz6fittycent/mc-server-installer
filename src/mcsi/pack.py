@@ -12,8 +12,8 @@ import sys
 import tarfile
 
 # Not part of a backup or a moved-over world: Mojang re-downloads libraries/
-# and versions/ from the jar, and logs are only logs.
-NOT_WORLD = {"logs", "libraries", "versions", "crash-reports", "console.log",
+# and versions/ from the jar, Fabric rebuilds .fabric/, and logs are only logs.
+NOT_WORLD = {"logs", "libraries", "versions", ".fabric", "crash-reports", "console.log",
              "console.log.old", "server.jar", "server.jar.part"}
 
 

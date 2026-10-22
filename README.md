@@ -6,7 +6,8 @@
 # Minecraft Server Installer
 
 Run your own **Minecraft: Java Edition** server at home, so the whole family can
-play together in one world. A short setup gets it going, and it keeps running in
+play together in one world - and, if you like, Bedrock players on phones,
+tablets and consoles too. A short setup gets it going, and it keeps running in
 the background - close the window, log out, or restart the computer, and the
 server is still there.
 
@@ -33,10 +34,11 @@ mc-server-installer
 
 ## First run
 
-The first time, a short setup asks a few questions - a name for your server and
-how much memory it may use (it suggests an amount for your computer) - then
-downloads Minecraft and starts the server. Anyone at home can join; if you'd
-rather allow only certain players, the setup lets you name them.
+The first time, a short setup asks a few questions - a name for your server, how
+much memory it may use (it suggests an amount for your computer), and your own
+Minecraft name, so you become the operator - then downloads Minecraft and starts
+the server. Anyone at home can join; if you'd rather allow only certain players,
+the setup lets you name them.
 
 ![Setup asks who may play: leave it empty and anyone at home can join](docs/screenshots/setup-players.png)
 
@@ -61,7 +63,7 @@ The server runs in the background, looked after by your computer:
 | --- | --- |
 | **p** | **Players**: who may join, who is an operator, who is playing now |
 | **b** | **Backups**: back up now, restore, or copy a backup to your Home folder |
-| **s** | **Settings**: server name, memory, whitelist, start with the computer |
+| **s** | **Settings**: server name, memory, whitelist, Bedrock players, start with the computer |
 | **c** | **Console**: the server's live log, and a box for server commands such as `say Dinner time!` |
 | **u** | **Update**: shown when a new Minecraft is out |
 | **?** | Help |
@@ -73,6 +75,53 @@ version (see below). Type the number (for two digits, type them quickly: **1**
 then **3** for 13) or click.
 
 ![Players](docs/screenshots/players.png)
+
+### Commands in the game
+
+Operators can type server commands in the game's chat, without coming back to
+the computer the server runs on - for example `/time set day`,
+`/weather clear`, `/gamemode creative Steve` or `/give Steve minecraft:diamond 5`.
+Setup makes you the operator if you give your Minecraft name; otherwise make
+yourself one with option **15** (or **Make operator** under **p**). Only make
+people you trust operators: they can do anything on the server, including
+making others operators.
+
+### The whitelist
+
+Adding players to the whitelist doesn't keep anyone out until the whitelist is
+**on**: with it off, anyone at home can join. The menu offers to turn it on when
+you add someone, and **Players** (**p**) says which it is and has a button for
+it. It takes effect straight away. Operators can always join, whitelist or not.
+
+### Bedrock players (phones, tablets, consoles)
+
+Turn on **Bedrock players can join** in Settings (**s**). Players then choose
+**Play → Servers → Add Server** in Minecraft, type the server's address with
+port **19132**, and sign in with their own Microsoft account - they don't need
+Java Edition. Phones, tablets and Windows can add a server; Xbox, PlayStation
+and Switch can't add one by themselves. On first join, Minecraft may ask whether
+to trust the server; say yes.
+
+Behind the scenes this uses [GeyserMC](https://geysermc.org) and Floodgate,
+which run on [Fabric](https://fabricmc.net) (the game itself stays the same).
+They are downloaded for your Minecraft version and kept up to date daily, since
+Bedrock updates itself on players' devices. They exist only for recent
+Minecraft versions, so with Bedrock on, a new Minecraft can only be installed
+once they support it (usually within days), and option 18 can only choose
+versions they support.
+
+Bedrock is changing how it connects to servers (from Minecraft 26.60). For the
+new way to work, the snap needs to read which disks are mounted, which the Snap
+Store doesn't allow by itself yet. If the menu asks for it, run this once and
+restart the server:
+
+```
+sudo snap connect mc-server-installer:mount-observe
+```
+
+For the whitelist and operators, type a Bedrock player's gamertag with a dot in
+front, as it shows in the game: `.Steve`. If the menu can't find the gamertag,
+have them try to join once (they are turned away), then add them again.
 
 ### Backups
 
@@ -131,7 +180,8 @@ background server. The original files stay where they were, as a backup.
 
 The server is reachable by anyone on your home network. To let friends join over
 the internet, forward **TCP port 25565** on your router to this computer, and
-give them your public IP address. First turn the whitelist on (Settings, **s**)
+give them your public IP address. For Bedrock players, also forward **TCP and
+UDP port 19132** and **UDP port 19133**. First turn the whitelist on (Settings, **s**)
 and add each player (**p**), so only the players you added can join. (A guided setup for this is planned for a later version.)
 
 ## Where things are
@@ -147,6 +197,8 @@ and add each player (**p**), so only the players you added can join. (A guided s
 - **Players can't join**: check that their Minecraft version matches the server's
   (the top of the menu), that they typed the address shown there, and that they
   are on the whitelist (press **p**).
+- **Someone not on the whitelist got in**: either the whitelist is off (press
+  **p** - it says which), or they are an operator; operators can always join.
 - **The server stopped twice by itself**: the menu shows why. Press **c** to read
   the end of the server's log.
 

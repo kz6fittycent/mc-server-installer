@@ -1,7 +1,7 @@
 name: mc-server-installer
 adopt-info: mc-server-installer
 title: Minecraft Server Installer
-summary: Run your own Minecraft Java Edition server at home, for the whole family
+summary: Run your own Minecraft server at home, for Java and Bedrock players
 description: |
   Set up a Minecraft: Java Edition server on your own computer in a couple of
   minutes, so your family can play together in one world.
@@ -15,6 +15,9 @@ description: |
 
   - Anyone at home can join - or only the players you add (whitelist), with their
     names checked with Mojang.
+  - Bedrock players too, if you like (phones, tablets, consoles), with their own
+    Microsoft accounts - through GeyserMC and Floodgate, set up for you.
+  - Operators can use commands from inside the game.
   - Daily backups while the server runs (the newest 7 are kept), plus a backup
     before every update or restore. Restore any of them from the menu.
   - Tells you when a new Minecraft is out, and updates in one step, with the
@@ -23,7 +26,7 @@ description: |
   - Only the person who set the server up can change it; others on the computer
     can see how it is doing.
   - The server runs as an unprivileged user, and the only open port is the game's
-    (25565).
+    (25565; with Bedrock on, also 19132 and 19133).
 
   Moving from an older version? The first time you open the menu it offers to
   bring your world, whitelist and operators over. The original stays where it was.
@@ -71,6 +74,10 @@ apps:
     plugs:
       - network
       - network-bind
+      # Bedrock (Geyser's NetherNet) asks Java which filesystem holds its
+      # files, which reads /proc/self/mounts. Not connected by itself until
+      # the store grants auto-connection; the menu says how to connect it.
+      - mount-observe
 
   # The menu: a front end for the service. It never runs the server itself.
   mc-server-installer:

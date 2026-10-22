@@ -11,6 +11,14 @@ service holds, and replies are read from its output. RCON stays off: vanilla
 Minecraft binds RCON to the game's own address, so it cannot be kept to this
 computer while the game is reachable by the family.
 
+Bedrock players (phones, tablets, consoles) join through GeyserMC, with
+Floodgate so they sign in with their own Microsoft account. Both are mods, so
+with Bedrock on the server runs on Fabric: Fabric's launcher starts the same
+vanilla server.jar with Fabric API, Geyser and Floodgate from Modrinth, built
+for that Minecraft version (which limits Bedrock to versions they support).
+They live in COMMON/bedrock, root's, outside the server folder: they are
+downloads, not part of the world, and a restored backup belongs to snap_daemon.
+
 Because systemd runs it, the server keeps going when the person who started
 it logs out (which is what killed the 14.x server, started from a login). It
 remembers whether the server should be running, so a snap refresh or a
@@ -54,9 +62,22 @@ INCOMING_DIR = os.path.join(COMMON, "incoming")
 STATE_FILE = os.path.join(COMMON, "state.json")
 PID_FILE = os.path.join(COMMON, "server.pid")
 SOCKET_PATH = os.path.join(COMMON, "control.sock")
+BEDROCK_DIR = os.path.join(COMMON, "bedrock")  # current/ = Fabric's launcher + mods/
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 PROFILE_URL = "https://api.mojang.com/users/profiles/minecraft/"
+MODRINTH_URL = "https://api.modrinth.com/v2/project/{}/version"
+FABRIC_META = "https://meta.fabricmc.net/v2/versions"
+XUID_URL = "https://api.geysermc.org/v2/xbox/xuid/"
+USER_AGENT = "kz6fittycent/mc-server-installer (https://github.com/kz6fittycent/mc-server-installer)"
+BEDROCK_MODS = ("fabric-api", "geyser", "floodgate")  # Modrinth projects
+FABRIC_JAR = "fabric-server.jar"
+BEDROCK_PORT = 19132      # Geyser's default; Bedrock's own default port
+# Bedrock 26.60 (October 2026) drops RakNet for NetherNet (WebRTC), which
+# Geyser does not turn on by itself. Both, for players on either side of it:
+# RakNet on UDP 19132, NetherNet's signaling on TCP 19132 and its game traffic
+# on UDP 19133. (Floodgate sign-in Geyser turns on by itself.)
+GEYSER_OPTIONS = ("-DgeyserTransport=both", "-DgeyserWebrtcPort=19133")
 STOP_GRACE = 120          # seconds to wait for the world to save on stop
 CRASH_WINDOW = 600        # a second crash within this many seconds: give up
 DEFAULT_RAM_MB = 2048
@@ -71,16 +92,24 @@ STARTUP_WAIT = 120        # seconds a command waits for the server to finish sta
 READ_ONLY = {"status", "log", "get-properties", "list-backups", "players"}
 
 PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
+# Floodgate's name for a Bedrock player: a dot, then the gamertag with spaces as underscores.
+BEDROCK_NAME = re.compile(r"^\.[A-Za-z0-9_]{1,15}$")
 PROPERTY_KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 JAR_NAME = re.compile(r"^[A-Za-z0-9._\-]{1,64}\.jar$")
 VERSION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\- ]{0,31}$")
 BACKUP_NAME = re.compile(r"^backup-(manual|daily|before-restore|before-update)-[0-9-]+\.tar\.gz$")
-LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\]: ")
+LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\](?: \([^)]*\))?:? ")
 # Server-thread lines only: chat is printed as "<name> text", so a player
-# cannot fake these by typing them.
-JOINED = re.compile(r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\]: ([A-Za-z0-9_]{3,16}) joined the game$")
-DONE = re.compile(r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\]: Done \(")
-LEFT = re.compile(r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\]: ([A-Za-z0-9_]{3,16}) left the game$")
+# cannot fake these by typing them. Fabric adds the logger's name:
+# "[Server thread/INFO] (Minecraft) Done (...)".
+SERVER_LINE = r"^\[\d\d:\d\d:\d\d\] \[Server thread/INFO\](?: \(Minecraft\))?:? "
+JOINED = re.compile(SERVER_LINE + r"(\.?[A-Za-z0-9_]{1,16}) joined the game$")
+DONE = re.compile(SERVER_LINE + r"Done \(")
+LEFT = re.compile(SERVER_LINE + r"(\.?[A-Za-z0-9_]{1,16}) left the game$")
+# Floodgate's id for a Bedrock player (from their Xbox id), logged before the whitelist
+# turns them away - so a player the gamertag lookup does not know can be added after one try.
+BEDROCK_SEEN = re.compile(r"^Floodgate player logged in as \.?([A-Za-z0-9_]{1,15}) joined "
+                          r"\(UUID: (00000000-0000-0000-[0-9a-f]{4}-[0-9a-f]{12})\)")
 
 
 def log(message):
@@ -132,7 +161,8 @@ class State:
         self.data = {"desired": "stopped", "ram_mb": DEFAULT_RAM_MB, "version": None,
                      "jar": "server.jar", "owner_uid": None, "migrated": False,
                      "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
-                     "previous_version": None, "pinned": False, "main_level": None}
+                     "previous_version": None, "pinned": False, "main_level": None,
+                     "bedrock": False, "mods": {}, "bedrock_seen": {}}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -218,6 +248,14 @@ class Server:
         jar = self.state["jar"]
         if not os.path.exists(os.path.join(SERVER_DIR, jar)):
             raise Refused("Download the server first (option 1).")
+        # Fabric's launcher runs server.jar itself; a custom jar runs as it is.
+        launch = ["-jar", jar]
+        if self.state.get("bedrock") and jar == "server.jar":
+            current = os.path.join(BEDROCK_DIR, "current")
+            if not os.path.exists(os.path.join(current, FABRIC_JAR)):
+                raise Refused("Bedrock support is not downloaded. Turn it off and on again in Settings.")
+            launch = [*GEYSER_OPTIONS, f"-Dfabric.addMods={os.path.join(current, 'mods')}",
+                      "-jar", os.path.join(current, FABRIC_JAR)]
         if not self.eula_accepted():
             raise Refused("Agree to the Minecraft EULA first (option 2).")
         ram_mb = int(ram_mb or self.state["ram_mb"])
@@ -229,7 +267,7 @@ class Server:
             os.replace(console_path, console_path + ".old")
         self.process = await asyncio.create_subprocess_exec(
             *as_daemon(java_binary(), "-Xms128M", f"-Xmx{ram_mb}M", "-XX:+UseG1GC",
-                       "-jar", jar, "nogui"),
+                       *launch, "nogui"),
             cwd=SERVER_DIR, stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             env={"PATH": os.environ.get("PATH", ""), "HOME": SERVER_DIR, "LANG": "C.UTF-8"})
@@ -242,7 +280,7 @@ class Server:
         self.state.update(desired="running", ram_mb=ram_mb)
         with open(PID_FILE, "w") as f:
             f.write(str(self.process.pid))
-        log(f"server started: pid {self.process.pid}, {ram_mb} MB, {jar}")
+        log(f"server started: pid {self.process.pid}, {ram_mb} MB, {os.path.basename(launch[-1])}")
         asyncio.create_task(self.watch(self.process))
         return {"ok": True, "pid": self.process.pid}
 
@@ -263,8 +301,16 @@ class Server:
                     self.online.append(match.group(1))
                 elif (match := LEFT.match(text)) and match.group(1) in self.online:
                     self.online.remove(match.group(1))
+                elif match := BEDROCK_SEEN.match(LOG_PREFIX.sub("", text)):
+                    self.saw_bedrock_player("." + match.group(1), match.group(2))
                 for queue in list(self.listeners):
                     queue.put_nowait(text)
+
+    def saw_bedrock_player(self, name, uuid):
+        seen = dict(self.state.get("bedrock_seen") or {})
+        if seen.get(name.lower()) != uuid:
+            seen[name.lower()] = uuid
+            self.state.update(bedrock_seen=seen)
 
     async def console_command(self, text, first_wait=3.0, settle=0.4, until=None):
         """Type a command into the server console; return the lines it printed.
@@ -407,6 +453,8 @@ class Server:
                  "previous_version": self.state["previous_version"],
                  "pinned": self.state.get("pinned", False), "latest": self.state["latest"],
                  "level": props.get("level-name") or "world",
+                 "bedrock": bool(self.state.get("bedrock")), "bedrock_port": BEDROCK_PORT,
+                 "bedrock_connect": bool(self.state.get("bedrock")) and not mounts_readable(),
                  "can_roll_back": os.path.exists(os.path.join(SERVER_DIR, "server.jar.previous"))}
         backups = self.backups()
         reply["last_backup"] = backups[0]["time"] if backups else None
@@ -444,6 +492,8 @@ class Server:
             raise Refused("Choose a new world or your current one.")
         version, url, sha1 = await asyncio.to_thread(server_download, wanted)
         latest = version if wanted is None else (await asyncio.to_thread(server_download))[0]
+        # Before anything changes: Bedrock players must still be able to join afterwards.
+        plan = await asyncio.to_thread(bedrock_plan, version) if self.state.get("bedrock") else None
         switching = ((wanted is not None and (version != self.state["version"]
                                               or self.state["jar"] != "server.jar"))
                      or (wanted is None and bool(self.state.get("main_level"))))
@@ -457,6 +507,8 @@ class Server:
         ensure_server_dir()
         try:
             await asyncio.to_thread(fetch_verified, url, sha1, os.path.join(SERVER_DIR, "server.jar"))
+            if plan:
+                self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
         except Exception:
             if restart:  # leave the family's server as it was, not stopped
                 await self.start()
@@ -502,13 +554,38 @@ class Server:
         return {"ok": True, "reply": await self.console_command(text.strip())}
 
     async def player(self, action, name):
-        """Whitelist, op or deop a player - live when running, in the files when not."""
-        if not PLAYER_NAME.match(name or ""):
+        """Whitelist, op or deop a player - live when running, in the files when not.
+
+        A Bedrock player is ".Gamertag", as Floodgate names them in the game.
+        Minecraft's own commands look names up with Mojang, which does not know
+        them, so their whitelist entries are written to the file (and reloaded).
+        """
+        name = (name or "").strip()
+        bedrock = name.startswith(".")
+        if bedrock:
+            name = name.replace(" ", "_")
+            if not BEDROCK_NAME.match(name):
+                raise Refused("A Bedrock player is a dot and their gamertag, like .Steve "
+                              "(up to 15 letters, digits or spaces).")
+            if action in ("whitelist", "op") and not self.state.get("bedrock"):
+                raise Refused("Turn on Bedrock players in Settings first.")
+        elif not PLAYER_NAME.match(name):
             raise Refused("A Minecraft name is 3 to 16 letters, digits or underscores.")
+        command = {"whitelist": "whitelist add", "unwhitelist": "whitelist remove",
+                   "op": "op", "deop": "deop"}[action]
+        if self.running and not (bedrock and action in ("whitelist", "unwhitelist")):
+            reply = await self.console_command(f"{command} {name}")
+            if bedrock and any("does not exist" in line for line in reply):
+                raise Refused(f"{name} must be playing on the server to become an operator "
+                              "while it runs.")
+            return {"ok": True, "reply": reply}
+        reply = await self.edit_player_file(action, name, bedrock)
         if self.running:
-            command = {"whitelist": "whitelist add", "unwhitelist": "whitelist remove",
-                       "op": "op", "deop": "deop"}[action]
-            return {"ok": True, "reply": await self.console_command(f"{command} {name}")}
+            await self.console_command("whitelist reload")
+            reply = [line.removesuffix(" (applies when the server starts)") for line in reply]
+        return {"ok": True, "reply": reply}
+
+    async def edit_player_file(self, action, name, bedrock):
         filename = "ops.json" if action in ("op", "deop") else "whitelist.json"
         path = os.path.join(SERVER_DIR, filename)
         entries = await read_server_json(filename)
@@ -516,8 +593,16 @@ class Server:
         if action in ("deop", "unwhitelist"):
             write_file(path, json.dumps(entries, indent=2) + "\n")
             done = "is no longer an operator" if action == "deop" else "is off the whitelist"
-            return {"ok": True, "reply": [f"{name} {done}"]}
-        profile = await asyncio.to_thread(lookup_player, name)
+            return [f"{name} {done}"]
+        if bedrock:
+            profile = await asyncio.to_thread(lookup_bedrock_player, name,
+                                              self.state.get("bedrock_seen") or {})
+            if profile is None:
+                raise Refused(f"The Xbox gamertag {name[1:]} wasn't found. If the spelling is "
+                              "right, have them try to join this server once (they will be "
+                              "turned away), then add them again.")
+        else:
+            profile = await asyncio.to_thread(lookup_player, name)
         if profile is None:
             raise Refused(f"There is no Minecraft account called {name}.")
         entry = {"uuid": profile["uuid"], "name": profile["name"]}
@@ -526,7 +611,7 @@ class Server:
         entries.append(entry)
         write_file(path, json.dumps(entries, indent=2) + "\n")
         done = "added to the whitelist" if action == "whitelist" else "made an operator"
-        return {"ok": True, "reply": [f"{profile['name']} {done} (applies when the server starts)"]}
+        return [f"{profile['name']} {done} (applies when the server starts)"]
 
     async def players(self):
         props = self.properties()
@@ -549,9 +634,11 @@ class Server:
             lines.append(f"{key}={value}")
         write_file(path, "\n".join(lines) + "\n")
 
-    def settings(self, fields):
-        """The Settings screen and the first-run walkthrough: name, whitelist, memory, autostart."""
+    async def settings(self, fields):
+        """The Settings screen and the first-run walkthrough: name, whitelist, memory,
+        autostart, Bedrock players."""
         props = {}
+        restart = False
         if "motd" in fields:
             motd = str(fields["motd"]).strip()
             if not motd or len(motd) > 59 or any(c in motd for c in "\r\n\\"):
@@ -559,17 +646,34 @@ class Server:
             props["motd"] = motd
         if "white_list" in fields:
             on = "true" if fields["white_list"] else "false"
+            if self.running and self.properties().get("white-list") != on:
+                # Live, so nobody has to wait for a restart for it to count.
+                await self.console_command("whitelist " + ("on" if fields["white_list"] else "off"))
             props.update({"white-list": on, "enforce-whitelist": on})
+        if "bedrock" in fields and bool(fields["bedrock"]) != bool(self.state.get("bedrock")):
+            if fields["bedrock"]:
+                if self.state["jar"] != "server.jar" or not self.state["version"]:
+                    raise Refused("Bedrock players need the standard Minecraft server: "
+                                  "download it first (option 1).")
+                plan = await asyncio.to_thread(bedrock_plan, self.state["version"])
+                self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
+            self.state.update(bedrock=bool(fields["bedrock"]))
+            log("Bedrock players " + ("on" if fields["bedrock"] else "off"))
+            restart = self.running
         if "ram_mb" in fields:
             ram_mb = int(fields["ram_mb"])
             if ram_mb < 1024:
                 raise Refused("The server needs at least 1024 MB (1 GB) of memory.")
+            restart = restart or ram_mb != self.state["ram_mb"]
             self.state.update(ram_mb=ram_mb)
         if "autostart" in fields:
             self.state.update(autostart=bool(fields["autostart"]))
+        current = self.properties()
+        changed = {k for k, v in props.items() if current.get(k) != v} - {"white-list", "enforce-whitelist"}
         if props:
             self.set_properties(props)
-        note = "Restart the server to use the new settings." if self.running and props else None
+        note = ("Restart the server to use the new settings."
+                if self.running and (changed or restart) else None)
         return {"ok": True, "note": note}
 
     async def replace_world(self, archive, keep_jars):
@@ -633,6 +737,8 @@ class Server:
         latest = self.update_available()
         if not latest:
             raise Refused("You already have the latest Minecraft server.")
+        if self.state.get("bedrock"):
+            await asyncio.to_thread(bedrock_plan, latest)  # refuses if Bedrock can't follow yet
         was_running = self.running
         old_version = self.state["version"]
         if self.has_world():
@@ -659,8 +765,16 @@ class Server:
         jar = os.path.join(SERVER_DIR, "server.jar")
         if not os.path.exists(jar + ".previous"):
             raise Refused("There is no previous Minecraft version to go back to.")
+        plan = None
+        if self.state.get("bedrock"):
+            if not self.state["previous_version"]:
+                raise Refused("The previous version is unknown, so Bedrock support can't follow. "
+                              "Turn Bedrock players off in Settings first.")
+            plan = await asyncio.to_thread(bedrock_plan, self.state["previous_version"])
         was_running = self.running
         await self.stop()
+        if plan:
+            self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
         os.replace(jar, jar + ".swap")
         os.replace(jar + ".previous", jar)
         os.replace(jar + ".swap", jar + ".previous")
@@ -721,6 +835,7 @@ class Server:
             try:
                 if time.time() - self.state["latest_checked"] > DAY:
                     await self.check_for_update()
+                    await self.refresh_bedrock()
                 daily = [b for b in self.backups() if b["kind"] == "daily"]
                 due = not daily or time.time() - daily[0]["time"] > DAY
                 if self.running and due and time.time() - self.started_at > 30:
@@ -728,6 +843,21 @@ class Server:
             except Exception as error:  # never let housekeeping take the service down
                 log(f"housekeeping: {error!r}")
             await asyncio.sleep(HOUSEKEEPING_EVERY)
+
+    async def refresh_bedrock(self):
+        """Newer Geyser builds for the same Minecraft: they follow Bedrock's own updates,
+        which players' phones and tablets install by themselves."""
+        if not self.state.get("bedrock") or self.state["jar"] != "server.jar":
+            return
+        plan = await asyncio.to_thread(bedrock_plan, self.state["version"])
+        if {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
+            return
+        self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
+        log(f"Bedrock support updated: {', '.join(self.state['mods'].values())}")
+        if self.running and not self.online:  # nobody to disconnect: use it now
+            log("restarting the server (nobody is playing) to use it")
+            await self.stop(remember=False)
+            await self.start()
 
     def get_properties(self):
         try:
@@ -934,6 +1064,103 @@ def fetch_verified(url, sha1, target):
     os.replace(partial, target)
 
 
+def mounts_readable():
+    """Whether the mount-observe plug is connected. Without it Java cannot tell
+    which filesystem holds a file, and Geyser's NetherNet - the only way newer
+    Bedrock versions connect - does not start (the older RakNet still does)."""
+    try:
+        with open("/proc/self/mounts") as f:
+            f.read(1)
+        return True
+    except OSError:
+        return False
+
+
+def http_json(url):
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=20) as r:
+        return json.load(r)
+
+
+def bedrock_plan(version):
+    """What Bedrock support needs for a Minecraft version: the newest Fabric API,
+    Geyser and Floodgate built for it, and Fabric's server launcher.
+
+    Refuses when one of them has no build for that version (yet).
+    """
+    mods = {}
+    for project in BEDROCK_MODS:
+        query = urllib.parse.urlencode({"loaders": '["fabric"]', "game_versions": json.dumps([version])})
+        builds = sorted(http_json(f"{MODRINTH_URL.format(project)}?{query}"),
+                        key=lambda b: b["date_published"], reverse=True)
+        if not builds:
+            raise Refused(f"Bedrock players can't join Minecraft {version} yet: {project} has no "
+                          "version for it. New Minecraft versions usually get one within days.")
+        file = next((f for f in builds[0]["files"] if f["primary"]), builds[0]["files"][0])
+        mods[project] = (file["filename"], file["url"], file["hashes"]["sha1"])
+    quoted = urllib.parse.quote(version)
+    loader = next((l["loader"]["version"] for l in http_json(f"{FABRIC_META}/loader/{quoted}")
+                   if l["loader"]["stable"]), None)
+    installer = next((i["version"] for i in http_json(f"{FABRIC_META}/installer") if i["stable"]), None)
+    if not loader or not installer:
+        raise Refused(f"Bedrock players can't join Minecraft {version}: Fabric does not support it.")
+    return {"version": version, "mods": mods,
+            "launcher": f"{FABRIC_META}/loader/{quoted}/{loader}/{installer}/server/jar"}
+
+
+def install_bedrock(plan):
+    """Put a plan's launcher and mods in BEDROCK_DIR/current, all at once.
+
+    They are gathered in next/ first (files that did not change are copied,
+    not downloaded again), so a failed download leaves current/ as it was.
+    Returns {project: file name}.
+    """
+    current, ready = os.path.join(BEDROCK_DIR, "current"), os.path.join(BEDROCK_DIR, "next")
+    shutil.rmtree(ready, ignore_errors=True)
+    os.makedirs(os.path.join(ready, "mods"), mode=0o755)
+    for project, (filename, url, sha1) in plan["mods"].items():
+        target = os.path.join(ready, "mods", filename)
+        have = os.path.join(current, "mods", filename)
+        if os.path.exists(have):
+            shutil.copy(have, target)
+        else:
+            fetch_verified(url, sha1, target)
+    # Fabric publishes no checksum for the launcher; it comes over HTTPS.
+    request = urllib.request.Request(plan["launcher"], headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=60) as r, \
+            open(os.path.join(ready, FABRIC_JAR), "wb") as f:
+        shutil.copyfileobj(r, f)
+    os.chmod(os.path.join(ready, FABRIC_JAR), 0o644)
+    old = os.path.join(BEDROCK_DIR, "old")
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.exists(current):
+        os.rename(current, old)
+    os.rename(ready, current)
+    shutil.rmtree(old, ignore_errors=True)
+    return {project: filename for project, (filename, _, _) in plan["mods"].items()}
+
+
+def lookup_bedrock_player(name, seen):
+    """Floodgate's id for a Bedrock player (".Gamertag"), or None if unknown.
+
+    GeyserMC's lookup only knows gamertags that have played on some Geyser
+    server; `seen` holds the ones that tried to join this one.
+    """
+    if name.lower() in seen:
+        return {"uuid": seen[name.lower()], "name": name}
+    gamertag = name[1:].replace("_", " ")  # Floodgate turned its spaces into underscores
+    try:
+        data = http_json(XUID_URL + urllib.parse.quote(gamertag))
+    except urllib.error.HTTPError as error:
+        if error.code in (400, 404, 503):  # 503: "Unable to find user in our cache"
+            return None
+        raise
+    if not data.get("xuid"):
+        return None
+    raw = f"{int(data['xuid']):016x}"
+    return {"uuid": f"00000000-0000-0000-{raw[:4]}-{raw[4:]}", "name": name}
+
+
 def lookup_player(name):
     """Mojang's id for a player name, or None if there is no such account."""
     try:
@@ -1057,8 +1284,9 @@ async def main():
             elif name == "players":
                 reply = await server.players()
             elif name == "settings":
-                reply = server.settings({k: v for k, v in request.items()
-                                         if k in ("motd", "white_list", "ram_mb", "autostart")})
+                reply = await server.settings({k: v for k, v in request.items()
+                                               if k in ("motd", "white_list", "ram_mb", "autostart",
+                                                        "bedrock")})
             elif name == "restore":
                 reply = await server.restore(request.get("name"))
             elif name == "update":
