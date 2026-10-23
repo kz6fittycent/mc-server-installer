@@ -19,6 +19,12 @@ name: 🛡️ Security Rebuild
 # Nothing happens while a security-rebuild issue is still open, so an
 # unreleased rebuild isn't rebuilt again every day.
 #
+# Nor while candidate holds a newer version than stable (a release still
+# under test): uploading the rebuild to candidate would replace it, and
+# testers would refresh back to the old version. Instead it comments once
+# on that release's call-for-testing issue with stable's notices, and
+# whether promoting the candidate fixes them.
+#
 # Every architecture on stable (amd64, arm64) is checked and, when any has
 # notices, all are rebuilt - each on its own kind of machine - so stable
 # stays one version built from one commit.
@@ -56,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: read
+      issues: write  # the comment on a release under test (see the top)
     outputs:
       rebuild: ${{ steps.decide.outputs.rebuild }}
       version: ${{ steps.stable.outputs.version }}
@@ -89,14 +95,25 @@ jobs:
           python3 - <<'EOF'
           import json, os, urllib.request
           runners = {"amd64": "ubuntu-latest", "arm64": "ubuntu-24.04-arm"}
-          stable = [c for c in json.load(open("info.json"))["channel-map"]
-                    if c["channel"]["track"] == "latest" and c["channel"]["name"] == "stable"]
+          channels = [c for c in json.load(open("info.json"))["channel-map"]
+                      if c["channel"]["track"] == "latest"]
+          stable = [c for c in channels if c["channel"]["name"] == "stable"]
           for c in stable:
               arch = c["channel"]["architecture"]
               urllib.request.urlretrieve(c["download"]["url"], f"stable-{arch}.snap")
               open(f"stable-{arch}.revision", "w").write(str(c["revision"]))
               print(f"Stable {arch}: version {c['version']}, revision {c['revision']}")
+          # A newer version on candidate is a release under test: downloaded
+          # too, to say whether promoting it fixes stable's notices.
+          number = lambda v: tuple(int(p) for p in v.split(".") if p.isdigit())
+          newer = [c for c in channels if c["channel"]["name"] == "candidate"
+                   and number(c["version"]) > number(stable[0]["version"])]
+          for c in newer:
+              arch = c["channel"]["architecture"]
+              urllib.request.urlretrieve(c["download"]["url"], f"candidate-{arch}.snap")
+              print(f"Candidate {arch}: version {c['version']}, revision {c['revision']} - a release under test")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"candidate_version={newer[0]['version'] if newer else ''}\n")
               out.write(f"version={stable[0]['version']}\n")
               out.write("revisions=" + ", ".join(f"{c['revision']} ({c['channel']['architecture']})"
                                                  for c in stable) + "\n")
@@ -121,6 +138,21 @@ jobs:
                   notices[package] = sorted(set(notices.get(package, [])) | set(usns))
           json.dump(notices, open("notices.json", "w"), indent=2, sort_keys=True)
           print(f"{sum(len(v) for v in notices.values())} notice(s) across {len(notices)} package(s)")
+          EOF
+          for snap in candidate-*.snap; do
+            [[ -e "$snap" ]] || continue
+            review-tools.snap-check-notices "$snap" | tee "${snap%.snap}.notices.json"
+          done
+          # How many of stable's notices the release under test still has.
+          python3 - <<'EOF'
+          import glob, json
+          stable = json.load(open("notices.json"))
+          left = set()
+          for path in glob.glob("candidate-*.notices.json"):
+              raw = json.load(open(path))
+              for package, usns in (next(iter(next(iter(raw.values())).values()), {}) if raw else {}).items():
+                  left |= set(usns) & set(stable.get(package, []))
+          open("candidate-unfixed", "w").write(str(len(left)))
           EOF
 
       - name: Find the commit stable was built from
@@ -152,6 +184,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ inputs.force }}
           DRY_RUN: ${{ inputs.dry_run }}
+          CANDIDATE_VERSION: ${{ steps.stable.outputs.candidate_version }}
         run: |
           count="$(python3 -c "import json; print(sum(len(v) for v in json.load(open('notices.json')).values()))")"
           open_issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --label security-rebuild --state open --json number --jq '.[0].number // empty')"
@@ -162,6 +195,28 @@ jobs:
             rebuild=true
           else
             echo "No security notices - nothing to do."
+          fi
+          if [[ "$rebuild" == "true" && -n "$CANDIDATE_VERSION" ]]; then
+            rebuild=false
+            echo "Candidate holds ${CANDIDATE_VERSION}, a release under test - not replacing it with a ${{ steps.stable.outputs.version }} rebuild."
+            issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --label call-for-testing --state open \
+              --search "in:title v${CANDIDATE_VERSION}" --json number,labels \
+              --jq '[.[] | select(all(.labels[]; .name != "security-rebuild"))][0].number // empty')"
+            marker="<!-- security-rebuild: stable ${{ steps.stable.outputs.version }} has notices -->"
+            if [[ -z "$issue" ]]; then
+              echo "::warning::No open call-for-testing issue for ${CANDIDATE_VERSION} to tell."
+            elif gh issue view "$issue" --repo "$GITHUB_REPOSITORY" --json comments --jq '.comments[].body' | grep -qF "$marker"; then
+              echo "Already told #$issue."
+            elif [[ "$DRY_RUN" != "true" ]]; then
+              if [[ "$(cat candidate-unfixed)" == 0 ]]; then
+                advice="This candidate doesn't have them, so promoting it fixes stable."
+              else
+                advice="This candidate has $(cat candidate-unfixed) of them too: rebuild it (Actions → 📣 Call for Testing → Run workflow) before promoting."
+              fi
+              notices="$(python3 -c "import json; [print(f'- \`{p}\`: ' + ', '.join(u)) for p, u in sorted(json.load(open('notices.json')).items())]")"
+              gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$(printf '%s\n\nStable (%s, revisions %s) has security notices from Ubuntu. The daily security rebuild is waiting rather than replacing this %s candidate with a %s rebuild.\n\n%s\n\n%s\n\n---\n_Posted by `security-rebuild.yml`._' \
+                "$marker" "${{ steps.stable.outputs.version }}" "${{ steps.stable.outputs.revisions }}" "$CANDIDATE_VERSION" "${{ steps.stable.outputs.version }}" "$notices" "$advice")"
+            fi
           fi
           if [[ "$DRY_RUN" == "true" && "$rebuild" == "true" ]]; then
             echo "Dry run: would rebuild version ${{ steps.stable.outputs.version }} from ${{ steps.commit.outputs.commit }}."
