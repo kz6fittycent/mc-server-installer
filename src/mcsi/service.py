@@ -524,6 +524,7 @@ class Server:
         world_note = self.switch_world(version, world if wanted is not None else None,
                                        back_to_latest=wanted is None)
         log(f"downloaded server {version}" + (" (chosen; pinned)" if pinned else ""))
+        asyncio.create_task(self.check_geyser())
         if restart:
             await self.start()
             note = "The server is restarting with it."
@@ -664,6 +665,7 @@ class Server:
                 self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
             self.state.update(bedrock=bool(fields["bedrock"]))
             log("Bedrock players " + ("on" if fields["bedrock"] else "off"))
+            asyncio.create_task(self.check_geyser())
             restart = self.running
         if "ram_mb" in fields:
             ram_mb = int(fields["ram_mb"])
@@ -836,6 +838,7 @@ class Server:
     async def housekeeping(self):
         """Once an hour: a daily backup while the server runs, and a daily update check."""
         await asyncio.sleep(HOUSEKEEPING_FIRST)
+        await self.check_geyser()
         while True:
             try:
                 if time.time() - self.state["latest_checked"] > DAY:
@@ -854,10 +857,8 @@ class Server:
         which players' phones and tablets install by themselves."""
         if not self.state.get("bedrock") or self.state["jar"] != "server.jar":
             return
-        version = self.state["version"]
-        newer = await asyncio.to_thread(geyser_moved_on, version)
-        self.state.update(geyser_moved_on={"version": version, "to": newer} if newer else None)
-        plan = await asyncio.to_thread(bedrock_plan, version)
+        await self.check_geyser()
+        plan = await asyncio.to_thread(bedrock_plan, self.state["version"])
         if {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
             return
         self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
@@ -866,6 +867,20 @@ class Server:
             log("restarting the server (nobody is playing) to use it")
             await self.stop(remember=False)
             await self.start()
+
+    async def check_geyser(self):
+        """Has Geyser moved on from this server's Minecraft? Daily, and as soon as it
+        could have changed: when the service starts, Bedrock is turned on, or the
+        version switches - not a day later."""
+        if not self.state.get("bedrock") or self.state["jar"] != "server.jar":
+            return
+        version = self.state["version"]
+        try:
+            newer = await asyncio.to_thread(geyser_moved_on, version)
+        except Exception as error:  # offline: the next check tries again
+            log(f"Geyser check failed: {error}")
+            return
+        self.state.update(geyser_moved_on={"version": version, "to": newer} if newer else None)
 
     def bedrock_restart(self):
         """Newer Bedrock mods are downloaded, but the running server started with older ones."""
