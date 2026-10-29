@@ -169,9 +169,18 @@ def status_text(s):
     if s.get("bedrock_connect"):
         lines.append(f"[b yellow]Newer Bedrock versions need this, once, in a terminal:[/] "
                      f"[b]{MOUNT_OBSERVE}[/] - then restart the server.")
+    if s.get("bedrock_restart"):
+        lines.append("[b cyan]A newer Geyser (for Bedrock players) is downloaded.[/] The server "
+                     "uses it the next time it starts: stop it (13) and start it again.")
+    if s.get("geyser_moved_on"):
+        lines.append(f"[b yellow]Geyser (for Bedrock players) is now only made for Minecraft "
+                     f"{s['geyser_moved_on']}.[/] On {s['version']} it gets no more updates, so "
+                     "once Bedrock updates on players' devices they may not be able to join. "
+                     "Press [b]1[/] to switch to the latest Minecraft.")
     if not s["you_may_change"]:
         lines.append(f"[yellow]You can watch this server; only {s['owner']} can change it.[/]")
-    if s.get("pinned") and s.get("latest") and s.get("version") != s.get("latest"):
+    if (s.get("pinned") and s.get("latest") and s.get("version") != s.get("latest")
+            and not s.get("geyser_moved_on")):  # which says the same, and why it matters
         world = f" (world \"{s['level']}\")" if s.get("level", "world") != "world" else ""
         lines.append(f"[dim]You chose Minecraft {s['version']}{world}. Minecraft {s['latest']} is "
                      "the latest: press 1 to switch to it.[/]")

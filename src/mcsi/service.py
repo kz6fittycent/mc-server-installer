@@ -162,7 +162,8 @@ class State:
                      "jar": "server.jar", "owner_uid": None, "migrated": False,
                      "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
                      "previous_version": None, "pinned": False, "main_level": None,
-                     "bedrock": False, "mods": {}, "bedrock_seen": {}}
+                     "bedrock": False, "mods": {}, "bedrock_seen": {},
+                     "geyser_moved_on": None}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -202,6 +203,7 @@ class Server:
         self.line_seq = 0
         self.online = []  # players, from the server's join/leave lines
         self.ready = asyncio.Event()  # set when the server says "Done" after starting
+        self.started_mods = None  # the Bedrock mods the running server started with
 
     @property
     def running(self):
@@ -249,13 +251,14 @@ class Server:
         if not os.path.exists(os.path.join(SERVER_DIR, jar)):
             raise Refused("Download the server first (option 1).")
         # Fabric's launcher runs server.jar itself; a custom jar runs as it is.
-        launch = ["-jar", jar]
+        launch, started_mods = ["-jar", jar], None
         if self.state.get("bedrock") and jar == "server.jar":
             current = os.path.join(BEDROCK_DIR, "current")
             if not os.path.exists(os.path.join(current, FABRIC_JAR)):
                 raise Refused("Bedrock support is not downloaded. Turn it off and on again in Settings.")
             launch = [*GEYSER_OPTIONS, f"-Dfabric.addMods={os.path.join(current, 'mods')}",
                       "-jar", os.path.join(current, FABRIC_JAR)]
+            started_mods = dict(self.state["mods"])
         if not self.eula_accepted():
             raise Refused("Agree to the Minecraft EULA first (option 2).")
         ram_mb = int(ram_mb or self.state["ram_mb"])
@@ -277,6 +280,7 @@ class Server:
         self.ready = asyncio.Event()
         self.stopping = False
         self.problem = None
+        self.started_mods = started_mods
         self.state.update(desired="running", ram_mb=ram_mb)
         with open(PID_FILE, "w") as f:
             f.write(str(self.process.pid))
@@ -455,6 +459,7 @@ class Server:
                  "level": props.get("level-name") or "world",
                  "bedrock": bool(self.state.get("bedrock")), "bedrock_port": BEDROCK_PORT,
                  "bedrock_connect": bool(self.state.get("bedrock")) and not mounts_readable(),
+                 "bedrock_restart": self.bedrock_restart(), "geyser_moved_on": self.geyser_moved_on(),
                  "can_roll_back": os.path.exists(os.path.join(SERVER_DIR, "server.jar.previous"))}
         backups = self.backups()
         reply["last_backup"] = backups[0]["time"] if backups else None
@@ -849,7 +854,10 @@ class Server:
         which players' phones and tablets install by themselves."""
         if not self.state.get("bedrock") or self.state["jar"] != "server.jar":
             return
-        plan = await asyncio.to_thread(bedrock_plan, self.state["version"])
+        version = self.state["version"]
+        newer = await asyncio.to_thread(geyser_moved_on, version)
+        self.state.update(geyser_moved_on={"version": version, "to": newer} if newer else None)
+        plan = await asyncio.to_thread(bedrock_plan, version)
         if {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
             return
         self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
@@ -858,6 +866,19 @@ class Server:
             log("restarting the server (nobody is playing) to use it")
             await self.stop(remember=False)
             await self.start()
+
+    def bedrock_restart(self):
+        """Newer Bedrock mods are downloaded, but the running server started with older ones."""
+        return (self.running and self.started_mods is not None and bool(self.state.get("bedrock"))
+                and self.started_mods != self.state["mods"])
+
+    def geyser_moved_on(self):
+        """The newer Minecraft Geyser is now made for, if it no longer makes builds for ours."""
+        moved = self.state.get("geyser_moved_on")
+        if (not moved or not self.state.get("bedrock") or self.state["jar"] != "server.jar"
+                or moved["version"] != self.state["version"]):
+            return None  # checked for another version: a switch since then answers it
+        return moved["to"]
 
     def get_properties(self):
         try:
@@ -1106,6 +1127,21 @@ def bedrock_plan(version):
         raise Refused(f"Bedrock players can't join Minecraft {version}: Fabric does not support it.")
     return {"version": version, "mods": mods,
             "launcher": f"{FABRIC_META}/loader/{quoted}/{loader}/{installer}/server/jar"}
+
+
+def geyser_moved_on(version):
+    """The Minecraft version the newest Geyser is built for, if that is newer than `version`
+    and leaves it out. Geyser for Fabric is only built for the newest Minecraft, so a server
+    kept on an older one stops getting Bedrock's updates, and Geyser says it is out of date."""
+    query = urllib.parse.urlencode({"loaders": '["fabric"]'})
+    builds = sorted(http_json(f"{MODRINTH_URL.format('geyser')}?{query}"),
+                    key=lambda b: b["date_published"], reverse=True)
+    if not builds or version in builds[0]["game_versions"]:
+        return None
+    newest = builds[0]["game_versions"][-1]
+    ours, theirs = release_times(version, newest)
+    # Newer only: a new Minecraft can come out before Geyser has a build for it.
+    return newest if ours and theirs and theirs > ours else None
 
 
 def install_bedrock(plan):
