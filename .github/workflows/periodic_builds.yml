@@ -1,8 +1,8 @@
 name: Periodic Builds and Scans
 on:
-  # Runs at 10:00 UTC everyday
+  # Runs at 10:30 UTC every Monday
   schedule:
-    - cron:  '30 10 * * *'
+    - cron:  '30 10 * * 1'
 
   workflow_dispatch:
 
