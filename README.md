@@ -239,6 +239,11 @@ and add each player (**p**), so only the players you added can join. (A guided s
 - **The server stopped twice by itself**: the menu shows why. Press **c** to read
   the end of the server's log.
 
+## Support
+
+Minecraft Server Installer is free and stays free. If it's useful to you, a tip on
+[Ko-fi](https://ko-fi.com/kz6fittycent), one-time or monthly, helps keep it going.
+
 ## Contributing
 
 Fork the repo, make changes, and submit a pull request on

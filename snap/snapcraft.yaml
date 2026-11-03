@@ -17,6 +17,9 @@ description: |
     names checked with Mojang.
   - Bedrock players too, if you like (phones, tablets, consoles), with their own
     Microsoft accounts - through GeyserMC and Floodgate, set up for you.
+  - Mods: find Fabric mods on Modrinth by name, or add a mod's jar file. Mods
+    from Modrinth come in the right version, with the mods they need, and follow
+    Minecraft updates. The menu says whether players need a mod too.
   - Operators can use commands from inside the game.
   - Daily backups while the server runs (the newest 7 are kept), plus a backup
     before every update or restore. Restore any of them from the menu.
@@ -36,12 +39,17 @@ description: |
   Not an official Minecraft product. Not approved by or associated with Mojang or
   Microsoft. You must agree to the Minecraft EULA (https://aka.ms/MinecraftEULA).
 
+  It is free and stays free. If it's useful to you, a tip on Ko-fi
+  (https://ko-fi.com/kz6fittycent) helps keep it going.
+
 website: https://minecraft.net
 contact: https://github.com/kz6fittycent/mc-server-installer/issues
 issues: https://github.com/kz6fittycent/mc-server-installer/issues
 source-code: https://github.com/kz6fittycent/mc-server-installer
 icon: snap/local/mc-server-installer.png
-donation: https://www.patreon.com/kz6fittycent
+donation:
+  - https://ko-fi.com/kz6fittycent
+  - https://www.patreon.com/kz6fittycent
 
 license: MIT
 base: core24
