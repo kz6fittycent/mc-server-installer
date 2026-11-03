@@ -19,6 +19,12 @@ for that Minecraft version (which limits Bedrock to versions they support).
 They live in COMMON/bedrock, root's, outside the server folder: they are
 downloads, not part of the world, and a restored backup belongs to snap_daemon.
 
+The owner's own mods run on the same Fabric. Mods from Modrinth are chosen by
+name and fetched like Geyser: the build for the server's Minecraft version,
+with the mods they need, kept up to date daily and switched along with the
+version. Jar files the owner brings themselves go in COMMON/mod-jars, as they
+are: nothing can match those to a new Minecraft version.
+
 Because systemd runs it, the server keeps going when the person who started
 it logs out (which is what killed the 14.x server, started from a login). It
 remembers whether the server should be running, so a snap refresh or a
@@ -53,6 +59,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 
 SNAP = os.environ["SNAP"]
 COMMON = os.environ["SNAP_COMMON"]
@@ -62,15 +69,22 @@ INCOMING_DIR = os.path.join(COMMON, "incoming")
 STATE_FILE = os.path.join(COMMON, "state.json")
 PID_FILE = os.path.join(COMMON, "server.pid")
 SOCKET_PATH = os.path.join(COMMON, "control.sock")
-BEDROCK_DIR = os.path.join(COMMON, "bedrock")  # current/ = Fabric's launcher + mods/
+# current/ = Fabric's launcher + mods/ from Modrinth (Bedrock's and the owner's; named
+# for its first use, and kept so for servers that already have it)
+BEDROCK_DIR = os.path.join(COMMON, "bedrock")
+MOD_JARS_DIR = os.path.join(COMMON, "mod-jars")  # jar files the owner added themselves
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 PROFILE_URL = "https://api.mojang.com/users/profiles/minecraft/"
-MODRINTH_URL = "https://api.modrinth.com/v2/project/{}/version"
+MODRINTH_API = "https://api.modrinth.com/v2"
+MODRINTH_URL = MODRINTH_API + "/project/{}/version"
 FABRIC_META = "https://meta.fabricmc.net/v2/versions"
 XUID_URL = "https://api.geysermc.org/v2/xbox/xuid/"
 USER_AGENT = "kz6fittycent/mc-server-installer (https://github.com/kz6fittycent/mc-server-installer)"
 BEDROCK_MODS = ("fabric-api", "geyser", "floodgate")  # Modrinth projects
+SEARCH_RESULTS = 8
+# Ids in a fabric.mod.json "depends" that are not other mods to add.
+NOT_MODS = {"minecraft", "fabricloader", "java", "fabric-api", "fabric"}
 FABRIC_JAR = "fabric-server.jar"
 BEDROCK_PORT = 19132      # Geyser's default; Bedrock's own default port
 # Bedrock 26.60 (October 2026) drops RakNet for NetherNet (WebRTC), which
@@ -89,7 +103,7 @@ HOUSEKEEPING_EVERY = 3600
 STARTUP_WAIT = 120        # seconds a command waits for the server to finish starting
 
 # Requests anyone on the computer may make; everything else is the owner's.
-READ_ONLY = {"status", "log", "get-properties", "list-backups", "players"}
+READ_ONLY = {"status", "log", "get-properties", "list-backups", "players", "mods"}
 
 PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 # Floodgate's name for a Bedrock player: a dot, then the gamertag with spaces as underscores.
@@ -97,6 +111,7 @@ BEDROCK_NAME = re.compile(r"^\.[A-Za-z0-9_]{1,15}$")
 PROPERTY_KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 JAR_NAME = re.compile(r"^[A-Za-z0-9._\-]{1,64}\.jar$")
 VERSION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\- ]{0,31}$")
+MOD_SLUG = re.compile(r"^[A-Za-z0-9_.+!@$()'-]{1,64}$")  # Modrinth's project slugs and ids
 BACKUP_NAME = re.compile(r"^backup-(manual|daily|before-restore|before-update)-[0-9-]+\.tar\.gz$")
 LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\](?: \([^)]*\))?:? ")
 # Server-thread lines only: chat is printed as "<name> text", so a player
@@ -163,7 +178,7 @@ class State:
                      "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
                      "previous_version": None, "pinned": False, "main_level": None,
                      "bedrock": False, "mods": {}, "bedrock_seen": {},
-                     "geyser_moved_on": None}
+                     "geyser_moved_on": None, "own_mods": {}, "mod_jars": {}}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -203,7 +218,8 @@ class Server:
         self.line_seq = 0
         self.online = []  # players, from the server's join/leave lines
         self.ready = asyncio.Event()  # set when the server says "Done" after starting
-        self.started_mods = None  # the Bedrock mods the running server started with
+        self.started_with = None  # the mods the running server started with (see mods_now)
+        self.mods_lock = asyncio.Lock()
 
     @property
     def running(self):
@@ -251,14 +267,16 @@ class Server:
         if not os.path.exists(os.path.join(SERVER_DIR, jar)):
             raise Refused("Download the server first (option 1).")
         # Fabric's launcher runs server.jar itself; a custom jar runs as it is.
-        launch, started_mods = ["-jar", jar], None
-        if self.state.get("bedrock") and jar == "server.jar":
+        launch = ["-jar", jar]
+        if self.fabric_needed():
             current = os.path.join(BEDROCK_DIR, "current")
             if not os.path.exists(os.path.join(current, FABRIC_JAR)):
-                raise Refused("Bedrock support is not downloaded. Turn it off and on again in Settings.")
-            launch = [*GEYSER_OPTIONS, f"-Dfabric.addMods={os.path.join(current, 'mods')}",
+                await self.install_mods(await self.mod_plan(self.state["version"]))
+            # Fabric takes a list of mod folders, separated like PATH.
+            mods = [os.path.join(current, "mods")] + ([MOD_JARS_DIR] if self.state["mod_jars"] else [])
+            launch = [*(GEYSER_OPTIONS if self.state.get("bedrock") else ()),
+                      f"-Dfabric.addMods={os.pathsep.join(mods)}",
                       "-jar", os.path.join(current, FABRIC_JAR)]
-            started_mods = dict(self.state["mods"])
         if not self.eula_accepted():
             raise Refused("Agree to the Minecraft EULA first (option 2).")
         ram_mb = int(ram_mb or self.state["ram_mb"])
@@ -280,7 +298,7 @@ class Server:
         self.ready = asyncio.Event()
         self.stopping = False
         self.problem = None
-        self.started_mods = started_mods
+        self.started_with = self.mods_now()
         self.state.update(desired="running", ram_mb=ram_mb)
         with open(PID_FILE, "w") as f:
             f.write(str(self.process.pid))
@@ -459,7 +477,10 @@ class Server:
                  "level": props.get("level-name") or "world",
                  "bedrock": bool(self.state.get("bedrock")), "bedrock_port": BEDROCK_PORT,
                  "bedrock_connect": bool(self.state.get("bedrock")) and not mounts_readable(),
-                 "bedrock_restart": self.bedrock_restart(), "geyser_moved_on": self.geyser_moved_on(),
+                 "bedrock_restart": self.restart_waiting() == "geyser",
+                 "mods_restart": self.restart_waiting() == "mods",
+                 "mod_count": len(self.state["own_mods"]) + len(self.state["mod_jars"]),
+                 "geyser_moved_on": self.geyser_moved_on(),
                  "can_roll_back": os.path.exists(os.path.join(SERVER_DIR, "server.jar.previous"))}
         backups = self.backups()
         reply["last_backup"] = backups[0]["time"] if backups else None
@@ -497,8 +518,8 @@ class Server:
             raise Refused("Choose a new world or your current one.")
         version, url, sha1 = await asyncio.to_thread(server_download, wanted)
         latest = version if wanted is None else (await asyncio.to_thread(server_download))[0]
-        # Before anything changes: Bedrock players must still be able to join afterwards.
-        plan = await asyncio.to_thread(bedrock_plan, version) if self.state.get("bedrock") else None
+        # Before anything changes: Bedrock players and the mods must still work afterwards.
+        plan = await self.mod_plan(version)
         switching = ((wanted is not None and (version != self.state["version"]
                                               or self.state["jar"] != "server.jar"))
                      or (wanted is None and bool(self.state.get("main_level"))))
@@ -513,12 +534,13 @@ class Server:
         try:
             await asyncio.to_thread(fetch_verified, url, sha1, os.path.join(SERVER_DIR, "server.jar"))
             if plan:
-                self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
+                await self.install_mods(plan)
         except Exception:
             if restart:  # leave the family's server as it was, not stopped
                 await self.start()
             raise
         pinned = version != latest
+        jars_note = self.jars_note(version) if version != self.state["version"] else None
         self.state.update(version=version, jar="server.jar", latest=latest,
                           latest_checked=time.time(), pinned=pinned)
         world_note = self.switch_world(version, world if wanted is not None else None,
@@ -530,7 +552,7 @@ class Server:
             note = "The server is restarting with it."
         else:
             note = "It is used the next time the server starts." if self.running else None
-        note = " ".join(n for n in (world_note, note) if n) or None
+        note = " ".join(n for n in (world_note, note, jars_note) if n) or None
         return {"ok": True, "version": version, "note": note, "pinned": pinned}
 
     def switch_world(self, version, world, back_to_latest):
@@ -661,8 +683,9 @@ class Server:
                 if self.state["jar"] != "server.jar" or not self.state["version"]:
                     raise Refused("Bedrock players need the standard Minecraft server: "
                                   "download it first (option 1).")
-                plan = await asyncio.to_thread(bedrock_plan, self.state["version"])
-                self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
+            # Off as well: Geyser must not stay among the owner's own mods.
+            await self.install_mods(await self.mod_plan(self.state["version"],
+                                                         bedrock=bool(fields["bedrock"])))
             self.state.update(bedrock=bool(fields["bedrock"]))
             log("Bedrock players " + ("on" if fields["bedrock"] else "off"))
             asyncio.create_task(self.check_geyser())
@@ -744,8 +767,7 @@ class Server:
         latest = self.update_available()
         if not latest:
             raise Refused("You already have the latest Minecraft server.")
-        if self.state.get("bedrock"):
-            await asyncio.to_thread(bedrock_plan, latest)  # refuses if Bedrock can't follow yet
+        await self.mod_plan(latest)  # refuses if Bedrock or a mod can't follow yet
         was_running = self.running
         old_version = self.state["version"]
         if self.has_world():
@@ -765,23 +787,21 @@ class Server:
         self.state.update(previous_version=old_version)
         if was_running:
             await self.start()
-        return {"ok": True, "version": result["version"]}
+        return {"ok": True, "version": result["version"], "note": result["note"]}
 
     async def rollback(self):
         """Go back to the server jar the last update replaced."""
         jar = os.path.join(SERVER_DIR, "server.jar")
         if not os.path.exists(jar + ".previous"):
             raise Refused("There is no previous Minecraft version to go back to.")
-        plan = None
-        if self.state.get("bedrock"):
-            if not self.state["previous_version"]:
-                raise Refused("The previous version is unknown, so Bedrock support can't follow. "
-                              "Turn Bedrock players off in Settings first.")
-            plan = await asyncio.to_thread(bedrock_plan, self.state["previous_version"])
+        if self.mods_wanted() and not self.state["previous_version"]:
+            raise Refused("The previous version is unknown, so Bedrock support and your mods "
+                          "can't follow. Turn Bedrock players off and remove your mods first.")
+        plan = await self.mod_plan(self.state["previous_version"])
         was_running = self.running
         await self.stop()
         if plan:
-            self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
+            await self.install_mods(plan)
         os.replace(jar, jar + ".swap")
         os.replace(jar + ".previous", jar)
         os.replace(jar + ".swap", jar + ".previous")
@@ -843,7 +863,7 @@ class Server:
             try:
                 if time.time() - self.state["latest_checked"] > DAY:
                     await self.check_for_update()
-                    await self.refresh_bedrock()
+                    await self.refresh_mods()
                 daily = [b for b in self.backups() if b["kind"] == "daily"]
                 due = not daily or time.time() - daily[0]["time"] > DAY
                 if self.running and due and time.time() - self.started_at > 30:
@@ -852,17 +872,22 @@ class Server:
                 log(f"housekeeping: {error!r}")
             await asyncio.sleep(HOUSEKEEPING_EVERY)
 
-    async def refresh_bedrock(self):
-        """Newer Geyser builds for the same Minecraft: they follow Bedrock's own updates,
-        which players' phones and tablets install by themselves."""
-        if not self.state.get("bedrock") or self.state["jar"] != "server.jar":
+    async def refresh_mods(self):
+        """Newer builds of the mods for the same Minecraft: Geyser's follow Bedrock's own
+        updates, which players' phones and tablets install by themselves, and the owner's
+        mods get their fixes."""
+        if not self.fabric_needed():
             return
         await self.check_geyser()
-        plan = await asyncio.to_thread(bedrock_plan, self.state["version"])
-        if {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
+        try:
+            plan = await self.mod_plan(self.state["version"])
+        except Exception as error:  # offline, or a mod lost its build: the daily backup still runs
+            log(f"mod refresh failed: {error}")
             return
-        self.state.update(mods=await asyncio.to_thread(install_bedrock, plan))
-        log(f"Bedrock support updated: {', '.join(self.state['mods'].values())}")
+        if not plan or {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
+            return
+        await self.install_mods(plan)
+        log(f"mods updated: {', '.join(self.state['mods'].values())}")
         if self.running and not self.online:  # nobody to disconnect: use it now
             log("restarting the server (nobody is playing) to use it")
             await self.stop(remember=False)
@@ -882,10 +907,158 @@ class Server:
             return
         self.state.update(geyser_moved_on={"version": version, "to": newer} if newer else None)
 
-    def bedrock_restart(self):
-        """Newer Bedrock mods are downloaded, but the running server started with older ones."""
-        return (self.running and self.started_mods is not None and bool(self.state.get("bedrock"))
-                and self.started_mods != self.state["mods"])
+    def restart_waiting(self):
+        """The running server started with other mods than a start now would use:
+        "geyser" for only newer builds of Bedrock's, "mods" for any other change."""
+        if not self.running or self.started_with is None:
+            return None
+        (mods_then, jars_then), (mods, jars) = self.started_with, self.mods_now()
+        if jars_then != jars or mods_then.keys() != mods.keys():
+            return "mods"
+        newer = {p for p in mods if mods[p] != mods_then[p]}
+        if not newer:
+            return None
+        return "geyser" if self.state.get("bedrock") and newer <= set(BEDROCK_MODS) else "mods"
+
+    # --- mods (Fabric) -------------------------------------------------
+
+    def mods_wanted(self, bedrock=None, own=None, jars=None):
+        """Whether anything needs Fabric: Bedrock players or the owner's mods."""
+        bedrock = self.state.get("bedrock") if bedrock is None else bedrock
+        own = self.state["own_mods"] if own is None else own
+        jars = self.state["mod_jars"] if jars is None else jars
+        return bool(bedrock or own or jars)
+
+    def fabric_needed(self):
+        """Whether the server starts on Fabric (a custom server jar runs as it is)."""
+        return self.state["jar"] == "server.jar" and self.mods_wanted()
+
+    def mods_now(self):
+        """What a start would load: ({project: file}, jar files)."""
+        if not self.fabric_needed():
+            return {}, ()
+        return dict(self.state["mods"]), tuple(sorted(self.state["mod_jars"]))
+
+    async def mod_plan(self, version, bedrock=None, own=None, jars=None):
+        """The Modrinth mods and Fabric launcher for a Minecraft version, from the
+        settings (or the changed ones given); None when nothing needs Fabric."""
+        bedrock = self.state.get("bedrock") if bedrock is None else bedrock
+        own = self.state["own_mods"] if own is None else own
+        jars = self.state["mod_jars"] if jars is None else jars
+        if not self.mods_wanted(bedrock, own, jars):
+            return None
+        if not version:
+            raise Refused("Press 1 to download the Minecraft server first: Bedrock support and "
+                          "mods are fetched for its version.")
+        # Fabric API is the one thing the owner's jar files commonly need that we can know of.
+        extra = ["fabric-api"] if any(j.get("fabric_api") for j in jars.values()) else []
+        return await asyncio.to_thread(fabric_plan, version, bool(bedrock),
+                                       {**own, **{p: {"title": p} for p in extra if p not in own}})
+
+    async def install_mods(self, plan):
+        async with self.mods_lock:
+            self.state.update(mods=await asyncio.to_thread(install_fabric, plan) if plan else {})
+
+    def need_standard(self):
+        if self.state["jar"] != "server.jar" or not self.state["version"]:
+            raise Refused("Mods need the standard Minecraft server: download it first (option 1).")
+
+    def restart_note(self):
+        return "It counts once the server restarts: stop it (13) and start it again." if self.running else None
+
+    def jars_note(self, version):
+        if not self.state["mod_jars"]:
+            return None
+        return (f"Your mods from Modrinth were switched to Minecraft {version}; check that your "
+                "own jar files work with it too.")
+
+    def mods_info(self):
+        own, installed = self.state["own_mods"], self.state["mods"]
+        bedrock = set(BEDROCK_MODS) if self.state.get("bedrock") else set()
+        return {"ok": True, "version": self.state["version"],
+                "standard": self.state["jar"] == "server.jar" and bool(self.state["version"]),
+                "bedrock": bool(self.state.get("bedrock")),
+                "mods": [{"project": p, **info, "file": installed.get(p)}
+                         for p, info in sorted(own.items(), key=lambda i: i[1]["title"].lower())],
+                "jars": [{"file": f, **info} for f, info in sorted(self.state["mod_jars"].items())],
+                "also": sorted(p for p in installed if p not in own and p not in bedrock)}
+
+    async def search_mods(self, query):
+        self.need_standard()
+        query = str(query or "").strip()
+        if not query or len(query) > 80 or "\n" in query:
+            raise Refused("Type a few words to look for, like \"minimap\" or \"backpacks\".")
+        hits = await asyncio.to_thread(modrinth_search, query, self.state["version"])
+        for hit in hits:
+            hit["added"] = hit["project"] in self.state["own_mods"]
+        return {"ok": True, "version": self.state["version"], "hits": hits}
+
+    async def add_mod(self, project):
+        """A mod from Modrinth, with the mods it needs, built for this server's Minecraft."""
+        self.need_standard()
+        project = str(project or "").strip()
+        if not MOD_SLUG.match(project):
+            raise Refused("Choose a mod from the search.")
+        info = await asyncio.to_thread(modrinth_project, project)
+        title, slug = info["title"], info["slug"]
+        if info.get("project_type") != "mod":
+            raise Refused(f"{title} is not a mod (it is a {info.get('project_type')}).")
+        if "fabric" not in (info.get("loaders") or []):
+            raise Refused(f"{title} has no Fabric version, and this server runs Fabric mods.")
+        if info.get("server_side") == "unsupported":
+            raise Refused(f"{title} only runs on players' own computers, not on a server: each "
+                          "player adds it to their Minecraft.")
+        if slug in ("geyser", "floodgate"):
+            raise Refused("Turn on Bedrock players in Settings instead (press s).")
+        if slug in self.state["own_mods"]:
+            raise Refused(f"{title} is already added.")
+        own = {**self.state["own_mods"],
+               slug: {"title": title, "client": info.get("client_side") or "unknown"}}
+        await self.install_mods(await self.mod_plan(self.state["version"], own=own))
+        self.state.update(own_mods=own)
+        log(f"mod added: {slug} ({self.state['mods'].get(slug)})")
+        return {"ok": True, "title": title, "client": own[slug]["client"], "note": self.restart_note()}
+
+    async def put_mod_jar(self, upload, name):
+        """A Fabric mod's jar file, as the owner brings it."""
+        self.need_standard()
+        if not JAR_NAME.match(name or ""):
+            raise Refused("A jar name is letters, digits, dots, dashes or underscores, ending in .jar.")
+        if not upload:
+            raise Refused("The jar file did not come along.")
+        info = await asyncio.to_thread(inspect_mod_jar, upload)
+        jars = {**self.state["mod_jars"], name: info}
+        await self.install_mods(await self.mod_plan(self.state["version"], jars=jars))
+        os.makedirs(MOD_JARS_DIR, mode=0o755, exist_ok=True)
+        os.chmod(upload, 0o644)
+        os.replace(upload, os.path.join(MOD_JARS_DIR, name))
+        self.state.update(mod_jars=jars)
+        log(f"mod jar added: {name} ({info['name']})")
+        note = self.restart_note()
+        if info["needs"]:
+            note = " ".join(n for n in (f"It needs these mods too: {', '.join(info['needs'])}. "
+                                        "Add them if they aren't yet.", note) if n)
+        return {"ok": True, "name": info["name"], "note": note}
+
+    async def remove_mod(self, project=None, jar=None):
+        own, jars = dict(self.state["own_mods"]), dict(self.state["mod_jars"])
+        if project:
+            if own.pop(project, None) is None:
+                raise Refused("That mod is not added.")
+        elif jar:
+            if jars.pop(jar, None) is None:
+                raise Refused("That jar file is not added.")
+        else:
+            raise Refused("Choose a mod to remove.")
+        await self.install_mods(await self.mod_plan(self.state["version"], own=own, jars=jars))
+        self.state.update(own_mods=own, mod_jars=jars)
+        if jar:
+            try:
+                os.unlink(os.path.join(MOD_JARS_DIR, jar))  # a name from the state, not the request
+            except FileNotFoundError:
+                pass
+        log(f"mod removed: {project or jar}")
+        return {"ok": True, "note": self.restart_note()}
 
     def geyser_moved_on(self):
         """The newer Minecraft Geyser is now made for, if it no longer makes builds for ours."""
@@ -1118,30 +1291,117 @@ def http_json(url):
         return json.load(r)
 
 
-def bedrock_plan(version):
-    """What Bedrock support needs for a Minecraft version: the newest Fabric API,
-    Geyser and Floodgate built for it, and Fabric's server launcher.
+def modrinth_project(project):
+    """A Modrinth project's details, by slug or id."""
+    try:
+        return http_json(f"{MODRINTH_API}/project/{urllib.parse.quote(project)}")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise Refused(f"There is no mod called {project} on Modrinth.")
+        raise
+
+
+def modrinth_search(query, version):
+    """Fabric mods on Modrinth that run on a server and have a build for `version`."""
+    facets = [["project_type:mod"], ["categories:fabric"], [f"versions:{version}"],
+              ["server_side:required", "server_side:optional"]]
+    found = http_json(f"{MODRINTH_API}/search?" + urllib.parse.urlencode(
+        {"query": query, "facets": json.dumps(facets), "limit": SEARCH_RESULTS}))
+    return [{"project": h["slug"], "title": h["title"], "description": h.get("description") or "",
+             "client": h.get("client_side") or "unknown", "downloads": h.get("downloads", 0)}
+            for h in found.get("hits", [])]
+
+
+def newest_build(project, version):
+    """A Modrinth project's newest Fabric build for a Minecraft version, or None."""
+    query = urllib.parse.urlencode({"loaders": '["fabric"]', "game_versions": json.dumps([version])})
+    builds = sorted(http_json(f"{MODRINTH_URL.format(urllib.parse.quote(project))}?{query}"),
+                    key=lambda b: b["date_published"], reverse=True)
+    return builds[0] if builds else None
+
+
+def fabric_plan(version, bedrock, own):
+    """What the server needs on Fabric for a Minecraft version: the newest builds of
+    Bedrock's mods (Fabric API, Geyser, Floodgate) if `bedrock`, of the owner's mods
+    (`own`, {slug: {"title": ...}}) and of every mod those need, and Fabric's launcher.
 
     Refuses when one of them has no build for that version (yet).
     """
-    mods = {}
-    for project in BEDROCK_MODS:
-        query = urllib.parse.urlencode({"loaders": '["fabric"]', "game_versions": json.dumps([version])})
-        builds = sorted(http_json(f"{MODRINTH_URL.format(project)}?{query}"),
-                        key=lambda b: b["date_published"], reverse=True)
-        if not builds:
-            raise Refused(f"Bedrock players can't join Minecraft {version} yet: {project} has no "
-                          "version for it. New Minecraft versions usually get one within days.")
-        file = next((f for f in builds[0]["files"] if f["primary"]), builds[0]["files"][0])
+    mods, seen = {}, set()
+    queue = [(p, None) for p in (BEDROCK_MODS if bedrock else ())] + [(p, "own") for p in own]
+    while queue:
+        project, wanted_by = queue.pop(0)
+        build = newest_build(project, version)
+        if build is None:
+            if wanted_by is None:
+                raise Refused(f"Bedrock players can't join Minecraft {version} yet: {project} has no "
+                              "version for it. New Minecraft versions usually get one within days.")
+            if wanted_by == "own":
+                raise Refused(f"{own[project]['title']} has no version for Minecraft {version} yet. "
+                              "Remove it in Mods (press o), or wait: mods usually catch up "
+                              "within days or weeks.")
+            raise Refused(f"{wanted_by} needs {project}, which has no version for Minecraft "
+                          f"{version} yet.")
+        if build["project_id"] in seen:
+            continue
+        seen.add(build["project_id"])
+        file = next((f for f in build["files"] if f["primary"]), build["files"][0])
         mods[project] = (file["filename"], file["url"], file["hashes"]["sha1"])
+        for need in build.get("dependencies") or []:
+            if need.get("dependency_type") != "required":
+                continue
+            need_id = need.get("project_id") or \
+                http_json(f"{MODRINTH_API}/version/{need['version_id']}")["project_id"]
+            if need_id not in seen:
+                # By slug, so the same mod has one name however it was asked for.
+                queue.append((modrinth_project(need_id)["slug"],
+                              own.get(project, {}).get("title") or project))
     quoted = urllib.parse.quote(version)
     loader = next((l["loader"]["version"] for l in http_json(f"{FABRIC_META}/loader/{quoted}")
                    if l["loader"]["stable"]), None)
     installer = next((i["version"] for i in http_json(f"{FABRIC_META}/installer") if i["stable"]), None)
     if not loader or not installer:
-        raise Refused(f"Bedrock players can't join Minecraft {version}: Fabric does not support it.")
+        raise Refused(f"Mods can't run on Minecraft {version}: Fabric does not support it.")
     return {"version": version, "mods": mods,
             "launcher": f"{FABRIC_META}/loader/{quoted}/{loader}/{installer}/server/jar"}
+
+
+def inspect_mod_jar(path):
+    """What a jar file the owner brings says about itself; refuses what is not a server-side
+    Fabric mod, saying what it is instead where that can be told."""
+    try:
+        with zipfile.ZipFile(path) as jar:
+            names = set(jar.namelist())
+            if "fabric.mod.json" not in names:
+                if names & {"META-INF/mods.toml", "META-INF/neoforge.mods.toml"}:
+                    raise Refused("That is a Forge or NeoForge mod, and this server runs Fabric mods. "
+                                  "Look for the Fabric version of it.")
+                if "quilt.mod.json" in names:
+                    raise Refused("That is a Quilt mod, and this server runs Fabric mods. "
+                                  "Look for the Fabric version of it.")
+                if names & {"plugin.yml", "paper-plugin.yml"}:
+                    raise Refused("That is a plugin for Paper or Spigot servers, not a Fabric mod.")
+                raise Refused("That jar is not a Fabric mod (it has no fabric.mod.json).")
+            if jar.getinfo("fabric.mod.json").file_size > 1 << 20:
+                raise Refused("That mod's fabric.mod.json is too big to be real.")
+            data = json.loads(jar.read("fabric.mod.json").decode("utf-8", "replace"), strict=False)
+    except (zipfile.BadZipFile, OSError):
+        raise Refused("That file is not a jar (a mod is a .jar file).")
+    except (RuntimeError, NotImplementedError):  # encrypted, or packed in a way zipfile can't read
+        raise Refused("That jar can't be opened here.")
+    except ValueError:
+        raise Refused("That mod's fabric.mod.json can't be read.")
+    if not isinstance(data, dict):
+        raise Refused("That mod's fabric.mod.json can't be read.")
+    name = str(data.get("name") or data.get("id") or "the mod")[:64]
+    environment = data.get("environment", "*")
+    if environment == "client":
+        raise Refused(f"{name} only runs on players' own computers, not on a server: each player "
+                      "adds it to their Minecraft.")
+    depends = data.get("depends") if isinstance(data.get("depends"), dict) else {}
+    return {"name": name, "fabric_api": bool({"fabric-api", "fabric"} & set(depends)),
+            "client": "unsupported" if environment == "server" else "unknown",
+            "needs": sorted(str(d)[:64] for d in depends if d not in NOT_MODS)[:10]}
 
 
 def geyser_moved_on(version):
@@ -1159,7 +1419,7 @@ def geyser_moved_on(version):
     return newest if ours and theirs and theirs > ours else None
 
 
-def install_bedrock(plan):
+def install_fabric(plan):
     """Put a plan's launcher and mods in BEDROCK_DIR/current, all at once.
 
     They are gathered in next/ first (files that did not change are copied,
@@ -1362,6 +1622,17 @@ async def main():
                     raise Refused("That jar is not on the server.")
                 state.update(jar=request["jar"])
                 reply = {"ok": True}
+            elif name == "mods":
+                reply = server.mods_info()
+            elif name == "mod-search":
+                reply = await server.search_mods(request.get("query"))
+            elif name == "mod-add":
+                reply = await server.add_mod(request.get("project"))
+            elif name == "mod-put-jar":
+                reply = await server.put_mod_jar(upload, request.get("name"))
+                upload = None  # moved into place
+            elif name == "mod-remove":
+                reply = await server.remove_mod(request.get("project"), request.get("jar"))
             elif name == "set-owner":
                 if caller != 0:
                     raise Refused("Changing the owner takes sudo.")

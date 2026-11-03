@@ -76,4 +76,12 @@ for _ in range(10):
 sys.exit("::error::no answer to a Bedrock ping on UDP 19132")
 EOF
 stop_cleanly
+
+echo "== With a mod from Modrinth (and Bedrock still on)"
+[[ "$($C mod-add project=lithium | field ok)" == True ]] || fail "adding a mod was refused"
+$C start ram_mb=2048 >/dev/null
+wait_ready
+sudo grep -q "lithium" "$CONSOLE" || fail "Fabric did not load the mod"
+stop_cleanly
+[[ "$($C mod-remove project=lithium | field ok)" == True ]] || fail "removing the mod was refused"
 echo "All good on $(uname -m)."
