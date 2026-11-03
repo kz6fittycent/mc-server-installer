@@ -51,8 +51,18 @@ OPTIONS = {
     16: "Remove a player's operator status",
     17: "Remove a player from the whitelist",
     18: "Specify server version (e.g. 26.2)",
+    19: "Add or remove mods",
 }
 START_RAM = {4: 2048, 5: 4096, 6: 6144, 7: 8192, 8: 16384}
+# Whether players need a mod in their own Minecraft too (Modrinth's client_side).
+CLIENT_SHORT = {"required": "players need it too", "optional": "optional for players",
+                "unsupported": "server only", "unknown": "players may need it too"}
+CLIENT_LONG = {
+    "required": "[b yellow]Players need it in their own Minecraft too[/], or they can't join: "
+                "each player installs Fabric and this mod, for the same Minecraft version.",
+    "optional": "Players can add it to their own Minecraft too, but don't have to.",
+    "unsupported": "It runs on the server only: players don't install anything.",
+    "unknown": "Check its page to see whether players need it in their own Minecraft too."}
 
 README = f"""\
 # Minecraft Server Installer
@@ -93,6 +103,11 @@ was running before.
 - **Players** (press **p**) and **Settings** (press **s**): who can join,
   operators, the server name, memory, and whether the server starts with
   the computer.
+- **Mods** (option 19, or press **o**): find Fabric mods on Modrinth by
+  name, or add a mod's .jar file. Mods from Modrinth come in the right
+  version and follow Minecraft updates. Some mods (new blocks, items or
+  creatures) must also be installed in each player's Minecraft; the menu
+  says which. Mods run as part of the server, so add only ones you trust.
 - **A specific version** (option 18): for when the latest Minecraft has a
   problem. Everyone's game must be set to the same version.
 - **Updates:** when a new Minecraft comes out, the top of this window says
@@ -133,7 +148,9 @@ def describe_uptime(seconds):
 def server_label(s):
     if s["jar"] != "server.jar":
         return f"your own server ({s['jar'].removeprefix('custom-')})"
-    return f"Minecraft {s['version']}" if s["version"] else "Minecraft (from your old server)"
+    count = s.get("mod_count") or 0
+    mods = f" with {count} mod{'s' if count != 1 else ''}" if count else ""
+    return (f"Minecraft {s['version']}" if s["version"] else "Minecraft (from your old server)") + mods
 
 
 def memory_label(mb):
@@ -172,6 +189,9 @@ def status_text(s):
     if s.get("bedrock_restart"):
         lines.append("[b cyan]A newer Geyser (for Bedrock players) is downloaded.[/] The server "
                      "uses it the next time it starts: stop it (13) and start it again.")
+    if s.get("mods_restart"):
+        lines.append("[b cyan]Your mod changes are ready.[/] The server uses them the next time it "
+                     "starts: stop it (13) and start it again.")
     if s.get("geyser_moved_on"):
         lines.append(f"[b yellow]Geyser (for Bedrock players) is now only made for Minecraft "
                      f"{s['geyser_moved_on']}.[/] On {s['version']} it gets no more updates, so "
@@ -770,6 +790,174 @@ class Settings(ModalScreen[None]):
         self.dismiss(None)
 
 
+class Pick(ModalScreen[int | None]):
+    """A question with a list to choose from; dismisses with the chosen position (or None)."""
+
+    def __init__(self, message, labels):
+        super().__init__()
+        self.message, self.labels = message, labels
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog tall"):
+            yield Static(self.message)
+            yield OptionList(*(Option(label, id=str(n)) for n, label in enumerate(self.labels)),
+                             id="pick-list")
+            with Horizontal(classes="buttons"):
+                yield Button("Cancel", id="cancel")
+
+    def on_mount(self):
+        self.query_one(OptionList).focus()
+
+    def on_option_list_option_selected(self, event):
+        event.stop()
+        self.dismiss(int(event.option_id))
+
+    def on_button_pressed(self, event):
+        self.dismiss(None)
+
+    def key_escape(self):
+        self.dismiss(None)
+
+
+class Mods(ModalScreen[None]):
+    """The owner's own mods: from Modrinth by name, or jar files they bring."""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog wide"):
+            yield Static("Asking the server…", id="mods-text")
+            yield OptionList(id="mod-list")
+            with Horizontal(classes="buttons"):
+                yield Button("Find a mod", variant="primary", id="find")
+                yield Button("Add a jar file", id="jar")
+                yield Button("Remove", id="remove")
+                yield Button("Close", id="close")
+
+    def on_mount(self):
+        self.info = None
+        self.load()
+
+    @work(thread=True, exclusive=True)
+    def load(self):
+        try:
+            info = client.request("mods")
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error")
+            return
+        self.app.call_from_thread(self.fill, info)
+
+    def fill(self, info):
+        self.info = info
+        if not info["standard"]:
+            text = ("[b]Mods[/]\n\nMods need the standard Minecraft server: press 1 in the menu to "
+                    "download it first.")
+        else:
+            text = (f"[b]Mods[/] for Minecraft {info['version']}, on Fabric. Find them on Modrinth by "
+                    "name, or add a mod's .jar file. Mods run as part of your server, so add only ones "
+                    "you trust. Changes apply the next time the server starts.")
+            if info["also"]:
+                text += f"\n[dim]Also installed, because your mods need them: {', '.join(info['also'])}[/]"
+        self.query_one("#mods-text", Static).update(text)
+        listing = self.query_one(OptionList)
+        listing.clear_options()
+        for m in info["mods"]:
+            listing.add_option(Option(f"{m['title']}  ·  {CLIENT_SHORT.get(m['client'], '')}",
+                                      id=f"mod:{m['project']}"))
+        for j in info["jars"]:
+            listing.add_option(Option(f"{j['name']} ({j['file']})  ·  your jar file  ·  "
+                                      f"{CLIENT_SHORT.get(j['client'], '')}", id=f"jar:{j['file']}"))
+        if not info["mods"] and not info["jars"]:
+            listing.add_option(Option("No mods yet", disabled=True))
+
+    def on_option_list_option_selected(self, event):
+        event.stop()  # choosing one is only for Remove
+
+    def on_button_pressed(self, event):
+        action = event.button.id
+        if action == "close":
+            self.dismiss(None)
+        elif action == "find":
+            self.app.push_screen(Ask("What kind of mod are you looking for? For example: minimap, "
+                                     "backpacks, villages, performance"), self.search)
+        elif action == "jar":
+            self.app.push_screen(Ask("The full path to the mod's .jar file (a Fabric mod), for "
+                                     "example ~/Downloads/mymod.jar", "~/"), self.put_jar)
+        elif action == "remove":
+            listing = self.query_one(OptionList)
+            option = (listing.get_option_at_index(listing.highlighted)
+                      if listing.highlighted is not None else None)
+            if option is None or option.disabled:
+                self.notify("Choose a mod in the list first.", severity="warning")
+                return
+            kind, name = option.id.split(":", 1)
+            label = str(option.prompt).split("  ·  ")[0]
+            self.app.push_screen(Confirm(f"Remove [b]{label}[/] from the server?", yes="Remove"),
+                                 lambda yes: yes and self.app.ask_service(
+                                     "mod-remove", done=self.done(f"Removed {label}."),
+                                     **({"project": name} if kind == "mod" else {"jar": name})))
+
+    def done(self, message):
+        """A reply handler (it runs in ask_service's thread) that also shows the list again."""
+        def handle(reply):
+            self.app.call_from_thread(self.load)
+            return f"{message} {reply.get('note') or ''}".strip()
+        return handle
+
+    @work(thread=True)
+    def search(self, query):
+        if not query:
+            return
+        try:
+            found = client.request("mod-search", query=query)
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error", timeout=10)
+            return
+        hits = found["hits"]
+        if not hits:
+            self.app.call_from_thread(self.app.notify, f"No server mods for Minecraft "
+                                      f"{found['version']} match \"{query}\". Try other words.",
+                                      severity="warning", timeout=8)
+            return
+        labels = [f"{h['title']}{' (added)' if h['added'] else ''}  ·  "
+                  f"{CLIENT_SHORT.get(h['client'], '')}  ·  {h['description'][:60]}" for h in hits]
+        self.app.call_from_thread(
+            self.app.push_screen,
+            Pick(f"[b]Mods on Modrinth[/] for Minecraft {found['version']} matching \"{query}\". "
+                 "Choose one to see more.", labels),
+            lambda n: n is not None and self.offer(hits[n]))
+
+    def offer(self, hit):
+        self.app.push_screen(Confirm(
+            f"[b]Add {hit['title']}?[/]\n\n{hit['description']}\n\n"
+            f"{CLIENT_LONG.get(hit['client'], CLIENT_LONG['unknown'])}\n\n"
+            f"More about it: https://modrinth.com/mod/{hit['project']}\n\n"
+            "Mods run as part of your server, so add only ones you trust.", yes="Add it"),
+            lambda yes: yes and self.app.ask_service(
+                "mod-add", f"Getting {hit['title']}…", self.done(f"Added {hit['title']}."),
+                project=hit["project"]))
+
+    @work(thread=True)
+    def put_jar(self, path):
+        if not path:
+            return
+        if path.startswith("~"):
+            path = REAL_HOME + path[1:]
+        if not os.path.isfile(path):
+            self.app.call_from_thread(self.app.notify, f"There is no file at {path}", severity="error")
+            return
+        self.app.call_from_thread(self.app.notify, "Copying the mod to the server…")
+        try:
+            reply = client.request("mod-put-jar", upload=path, name=os.path.basename(path))
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error", timeout=10)
+            return
+        self.app.call_from_thread(self.app.notify, f"Added {reply['name']}. {reply.get('note') or ''}",
+                                  timeout=12)
+        self.app.call_from_thread(self.load)
+
+    def key_escape(self):
+        self.dismiss(None)
+
+
 # --- the menu ---------------------------------------------------------------
 
 class Menu(App):
@@ -788,14 +976,15 @@ class Menu(App):
     .dialog VerticalScroll { height: 1fr; }
     .buttons { height: auto; margin-top: 1; align-horizontal: right; }
     .buttons Button { margin-left: 1; }
-    Confirm, Ask, Choose, Properties, Help, Players, Backups, Settings { align: center middle; }
+    Confirm, Ask, Choose, Pick, Properties, Help, Players, Backups, Settings, Mods {
+        align: center middle; }
     .choice { width: 100%; margin-top: 1; }
     .setup { width: 100%; max-width: 80; height: auto; margin: 1 2; padding: 1 2;
              border: round $accent; }
     .setup Input { margin-top: 1; }
     .switch-row { height: auto; margin-top: 1; }
     .switch-row Label { padding: 1 1; }
-    #backup-list { height: 1fr; }
+    #backup-list, #mod-list, #pick-list { height: 1fr; }
     #command { dock: bottom; }
     """
     BINDINGS = [
@@ -803,6 +992,7 @@ class Menu(App):
         Binding("b", "backups", "Backups"),
         Binding("s", "settings", "Settings"),
         Binding("u", "update", "Update", show=False),
+        Binding("o", "mods", "Mods"),
         Binding("c", "console", "Console"),
         Binding("m", "move", "Move old world", show=False),
         Binding("question_mark", "help", "Help"),
@@ -865,7 +1055,7 @@ class Menu(App):
         self.digits += event.character
         if self.digit_timer:
             self.digit_timer.stop()
-        # A second digit can still follow a 1 (10-18); anything else is complete.
+        # A second digit can still follow a 1 (10-19); anything else is complete.
         if self.digits == "1":
             self.digit_timer = self.set_timer(0.8, self.run_digits)
         else:
@@ -878,7 +1068,8 @@ class Menu(App):
             self.choose(number)
 
     def on_option_list_option_selected(self, event):
-        self.choose(int(event.option_id))
+        if event.option_list.id == "menu":  # lists on other screens bubble up to here too
+            self.choose(int(event.option_id))
 
     # --- actions ---
 
@@ -938,6 +1129,8 @@ class Menu(App):
                              lambda name: name and self.player(action, name))
         elif number == 18:
             self.push_screen(Ask("Specify server version (e.g. 26.2):", "26.2"), self.choose_version)
+        elif number == 19:
+            self.push_screen(Mods())
 
     @work(thread=True)
     def choose_version(self, version):
@@ -1094,7 +1287,10 @@ class Menu(App):
             "Everyone's Minecraft must be updated to the same version to join.",
             yes="Update"), lambda yes: yes and self.ask_service(
                 "update", "Backing up and updating… this can take a few minutes.",
-                lambda r: f"Updated to Minecraft {r['version']}."))
+                lambda r: f"Updated to Minecraft {r['version']}. " + (r.get("note") or "")))
+
+    def action_mods(self):
+        self.push_screen(Mods())
 
     def action_console(self):
         self.push_screen(Console())

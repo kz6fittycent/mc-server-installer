@@ -69,14 +69,15 @@ The server runs in the background, looked after by your computer:
 | **p** | **Players**: who may join, who is an operator, who is playing now |
 | **b** | **Backups**: back up now, restore, or copy a backup to your Home folder |
 | **s** | **Settings**: server name, memory, whitelist, Bedrock players, start with the computer |
+| **o** | **Mods**: add Fabric mods from Modrinth by name, or a mod's .jar file |
 | **c** | **Console**: the server's live log, and a box for server commands such as `say Dinner time!` |
 | **u** | **Update**: shown when a new Minecraft is out |
 | **?** | Help |
 | **q** | Quit the menu - the server keeps running |
 
 The numbered options 1 to 16 are the same as in earlier versions, in the same
-order; 17 removes a player from the whitelist, and 18 chooses a Minecraft
-version (see below). Type the number (for two digits, type them quickly: **1**
+order; 17 removes a player from the whitelist, 18 chooses a Minecraft
+version, and 19 opens Mods (see below). Type the number (for two digits, type them quickly: **1**
 then **3** for 13) or click.
 
 ![Players](docs/screenshots/players.png)
@@ -127,6 +128,35 @@ sudo snap connect mc-server-installer:mount-observe
 For the whitelist and operators, type a Bedrock player's gamertag with a dot in
 front, as it shows in the game: `.Steve`. If the menu can't find the gamertag,
 have them try to join once (they are turned away), then add them again.
+
+### Mods
+
+Press **o** (or option **19**) for Mods. The server runs
+[Fabric](https://fabricmc.net) mods; Forge, NeoForge and Quilt mods, and Paper
+or Spigot plugins, don't work, and the menu says so if you try one.
+
+- **Find a mod** searches [Modrinth](https://modrinth.com) by name and lists
+  only mods that run on a server and have a version for your Minecraft. The
+  server gets the right build, checked against Modrinth's checksum, and any
+  mods it needs. Newer builds are fetched daily, and when Minecraft updates (or
+  you choose another version) the mods switch along. If a mod has no build for
+  a new Minecraft yet, the update waits and the menu says which mod is holding
+  it back.
+- **Add a jar file** adds a mod you downloaded yourself (from your Home folder,
+  for example `~/Downloads/mymod.jar`). Nothing updates these: after a
+  Minecraft update, check that they still work.
+
+**Do players need the mod too?** It depends on the mod, and the menu shows it
+for each one. Mods that only change how the server works (performance, world
+generation, admin tools) run on the server alone. Mods that add new blocks,
+items or creatures must also be in each player's Minecraft, with Fabric and the
+same Minecraft version, or those players can't join. Mods like that generally
+don't work for Bedrock players.
+
+Mod changes count from the next time the server starts. Mods run as part of the
+server, so add only ones you trust.
+
+![Mods: Lithium and Terralith from Modrinth, and what players need](docs/screenshots/mods.png)
 
 ### Backups
 
@@ -193,6 +223,8 @@ and add each player (**p**), so only the players you added can join. (A guided s
 
 - The server's files: `/var/snap/mc-server-installer/common/server`
 - Backups: `/var/snap/mc-server-installer/common/backups`
+- Mods: from Modrinth in `/var/snap/mc-server-installer/common/bedrock/current/mods`,
+  your own jar files in `/var/snap/mc-server-installer/common/mod-jars`
 - The background service's log: `sudo snap logs mc-server-installer.service`
 
 ## Troubleshooting

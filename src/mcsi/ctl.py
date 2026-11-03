@@ -3,6 +3,7 @@
     mc-server-installer.ctl REQUEST [key=value ...] [--upload FILE]
 
 For example:  status | log since=0 | download | accept-eula | start ram_mb=4096
+| mods | mod-search query=storage | mod-add project=lithium | mod-remove project=lithium
 | stop | command text="say hi" | whitelist name=Steve | backup | list-backups
 and, with sudo:  set-owner user=NAME
 """
