@@ -96,7 +96,7 @@ STOP_GRACE = 120          # seconds to wait for the world to save on stop
 CRASH_WINDOW = 600        # a second crash within this many seconds: give up
 DEFAULT_RAM_MB = 2048
 LOG_LINES = 1000          # console lines kept for the menu's console screen
-BACKUPS_KEPT = 7          # of each automatic kind (daily, before-restore, before-update)
+BACKUPS_KEPT = 7          # of each automatic kind (daily, before-restore, before-update, before-mods)
 DAY = 86400
 HOUSEKEEPING_FIRST = 60   # seconds after the service starts
 HOUSEKEEPING_EVERY = 3600
@@ -112,7 +112,7 @@ PROPERTY_KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 JAR_NAME = re.compile(r"^[A-Za-z0-9._\-]{1,64}\.jar$")
 VERSION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\- ]{0,31}$")
 MOD_SLUG = re.compile(r"^[A-Za-z0-9_.+!@$()'-]{1,64}$")  # Modrinth's project slugs and ids
-BACKUP_NAME = re.compile(r"^backup-(manual|daily|before-restore|before-update)-[0-9-]+\.tar\.gz$")
+BACKUP_NAME = re.compile(r"^backup-(manual|daily|before-restore|before-update|before-mods)-[0-9-]+\.tar\.gz$")
 LOG_PREFIX = re.compile(r"^\[\d\d:\d\d:\d\d\] \[[^\]]+\](?: \([^)]*\))?:? ")
 # Server-thread lines only: chat is printed as "<name> text", so a player
 # cannot fake these by typing them. Fabric adds the logger's name:
@@ -993,6 +993,13 @@ class Server:
             hit["added"] = hit["project"] in self.state["own_mods"]
         return {"ok": True, "version": self.state["version"], "hits": hits}
 
+    async def change_mods(self, plan):
+        """The owner's mods change: back up the world first, since removing a mod takes its
+        blocks and items out of the world (and a new one may change it) at the next start."""
+        if self.has_world():
+            await self.backup("before-mods")
+        await self.install_mods(plan)
+
     async def add_mod(self, project):
         """A mod from Modrinth, with the mods it needs, built for this server's Minecraft."""
         self.need_standard()
@@ -1014,7 +1021,7 @@ class Server:
             raise Refused(f"{title} is already added.")
         own = {**self.state["own_mods"],
                slug: {"title": title, "client": info.get("client_side") or "unknown"}}
-        await self.install_mods(await self.mod_plan(self.state["version"], own=own))
+        await self.change_mods(await self.mod_plan(self.state["version"], own=own))
         self.state.update(own_mods=own)
         log(f"mod added: {slug} ({self.state['mods'].get(slug)})")
         return {"ok": True, "title": title, "client": own[slug]["client"], "note": self.restart_note()}
@@ -1028,7 +1035,7 @@ class Server:
             raise Refused("The jar file did not come along.")
         info = await asyncio.to_thread(inspect_mod_jar, upload)
         jars = {**self.state["mod_jars"], name: info}
-        await self.install_mods(await self.mod_plan(self.state["version"], jars=jars))
+        await self.change_mods(await self.mod_plan(self.state["version"], jars=jars))
         os.makedirs(MOD_JARS_DIR, mode=0o755, exist_ok=True)
         os.chmod(upload, 0o644)
         os.replace(upload, os.path.join(MOD_JARS_DIR, name))
@@ -1050,7 +1057,7 @@ class Server:
                 raise Refused("That jar file is not added.")
         else:
             raise Refused("Choose a mod to remove.")
-        await self.install_mods(await self.mod_plan(self.state["version"], own=own, jars=jars))
+        await self.change_mods(await self.mod_plan(self.state["version"], own=own, jars=jars))
         self.state.update(own_mods=own, mod_jars=jars)
         if jar:
             try:

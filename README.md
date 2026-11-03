@@ -146,6 +146,12 @@ or Spigot plugins, don't work, and the menu says so if you try one.
   for example `~/Downloads/mymod.jar`). Nothing updates these: after a
   Minecraft update, check that they still work.
 
+**Your world is backed up before every mod change.** Adding a mod never
+removes anything, and mods that make new structures only show up in land
+nobody has explored yet. Removing a mod is different: its blocks disappear from
+the world and its items from inventories and chests. If that was a mistake,
+restore the backup made "before a mod change" (press **b**).
+
 **Do players need the mod too?** It depends on the mod, and the menu shows it
 for each one. Mods that only change how the server works (performance, world
 generation, admin tools) run on the server alone. Mods that add new blocks,
@@ -161,7 +167,8 @@ server, so add only ones you trust.
 ### Backups
 
 - **Daily**, while the server runs. The newest 7 are kept.
-- **Before every update and every restore**, automatically.
+- **Before every update, every restore and every mod change**, automatically.
+  The newest 7 of each are kept.
 - **Whenever you like**: option 10, or **Back up now** in Backups. These are
   never deleted automatically, and a copy is put in your Home folder.
 

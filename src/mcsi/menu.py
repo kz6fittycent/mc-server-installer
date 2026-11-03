@@ -99,7 +99,7 @@ was running before.
   gamertag, like `.Steve`, as it shows in the game. Consoles can't add
   servers by themselves; phones, tablets and Windows can.
 - **Backups** (press **b**): daily while the server runs (the newest 7 are
-  kept), before every update and restore, and whenever you choose option 10,
+  kept), before every update, restore and mod change, and whenever you choose option 10,
   which also puts a copy in your Home folder. Restore any of them from here.
 - **Players** (press **p**) and **Settings** (press **s**): who can join,
   operators, the server name, memory, and whether the server starts with
@@ -643,7 +643,7 @@ class Players(ModalScreen[None]):
 
 class Backups(ModalScreen[None]):
     KINDS = {"manual": "backed up by you", "daily": "daily", "before-restore": "before a restore",
-             "before-update": "before an update"}
+             "before-update": "before an update", "before-mods": "before a mod change"}
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog wide"):
@@ -866,7 +866,8 @@ class Mods(ModalScreen[None]):
         else:
             text = (f"[b]Mods[/] for Minecraft {info['version']}, on Fabric. Find them on Modrinth by "
                     "name, or add a mod's .jar file. Mods run as part of your server, so add only ones "
-                    "you trust. Changes apply the next time the server starts.")
+                    "you trust. Changes apply the next time the server starts; the world is backed up "
+                    "before each one.")
             if info["also"]:
                 text += f"\n[dim]Also installed, because your mods need them: {', '.join(info['also'])}[/]"
         self.query_one("#mods-text", Static).update(text)
