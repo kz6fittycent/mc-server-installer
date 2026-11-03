@@ -164,7 +164,7 @@ example); the menu says so when you add it, and shows it in the list.
 Mod changes count from the next time the server starts. Mods run as part of the
 server, so add only ones you trust.
 
-![Mods: Lithium and Terralith from Modrinth, and what players need](docs/screenshots/mods.png)
+![Mods: Lithium, Terralith and Better Villages from Modrinth, and what players need (Better Villages needs Library Ferret)](docs/screenshots/mods.png)
 
 ### Backups
 
