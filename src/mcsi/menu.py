@@ -62,7 +62,8 @@ CLIENT_LONG = {
     "required": "[b yellow]Players need it in their own Minecraft too[/], or they can't join: "
                 "each player installs Fabric and this mod, for the same Minecraft version.",
     "optional": "Players can add it to their own Minecraft too, but don't have to.",
-    "unsupported": "It runs on the server only: players don't install anything.",
+    "unsupported": "It runs on the server only: players don't install anything, unless it needs "
+                   "a mod they need too (you're told when it's added).",
     "unknown": "Check its page to see whether players need it in their own Minecraft too."}
 
 README = f"""\
@@ -874,7 +875,9 @@ class Mods(ModalScreen[None]):
         listing = self.query_one(OptionList)
         listing.clear_options()
         for m in info["mods"]:
-            listing.add_option(Option(f"{m['title']}  ·  {CLIENT_SHORT.get(m['client'], '')}",
+            need = m.get("players_need")
+            listing.add_option(Option(f"{m['title']}  ·  {CLIENT_SHORT.get(m['client'], '')}"
+                                      + (f" (and {', '.join(need)})" if need else ""),
                                       id=f"mod:{m['project']}"))
         for j in info["jars"]:
             listing.add_option(Option(f"{j['name']} ({j['file']})  ·  your jar file  ·  "

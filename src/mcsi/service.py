@@ -178,7 +178,8 @@ class State:
                      "autostart": True, "boot_id": None, "latest": None, "latest_checked": 0,
                      "previous_version": None, "pinned": False, "main_level": None,
                      "bedrock": False, "mods": {}, "bedrock_seen": {},
-                     "geyser_moved_on": None, "own_mods": {}, "mod_jars": {}}
+                     "geyser_moved_on": None, "own_mods": {}, "mod_jars": {},
+                     "players_need": {}}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -884,7 +885,12 @@ class Server:
         except Exception as error:  # offline, or a mod lost its build: the daily backup still runs
             log(f"mod refresh failed: {error}")
             return
-        if not plan or {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
+        if not plan:
+            return
+        if {p: f for p, (f, _, _) in plan["mods"].items()} == self.state.get("mods"):
+            # The same files, but what players need may have changed (or not been known yet).
+            if plan["players_need"] != self.state.get("players_need"):
+                self.state.update(players_need=plan["players_need"])
             return
         await self.install_mods(plan)
         log(f"mods updated: {', '.join(self.state['mods'].values())}")
@@ -957,7 +963,8 @@ class Server:
 
     async def install_mods(self, plan):
         async with self.mods_lock:
-            self.state.update(mods=await asyncio.to_thread(install_fabric, plan) if plan else {})
+            self.state.update(mods=await asyncio.to_thread(install_fabric, plan) if plan else {},
+                              players_need=plan.get("players_need", {}) if plan else {})
 
     def need_standard(self):
         if self.state["jar"] != "server.jar" or not self.state["version"]:
@@ -972,13 +979,26 @@ class Server:
         return (f"Your mods from Modrinth were switched to Minecraft {version}; check that your "
                 "own jar files work with it too.")
 
+    def mod_info(self, project, info, file):
+        """One of the owner's mods: players need it too when a mod it needs is one they need."""
+        need = (self.state.get("players_need") or {}).get(project, [])
+        return {"project": project, **info, "file": file, "players_need": need,
+                "client": "required" if need else info["client"]}
+
+    def players_note(self, project, title):
+        need = (self.state.get("players_need") or {}).get(project)
+        if not need:
+            return None
+        return (f"Players need {', '.join(need)} in their own Minecraft too, with Fabric: {title} "
+                "needs it, and they can't join without it.")
+
     def mods_info(self):
         own, installed = self.state["own_mods"], self.state["mods"]
         bedrock = set(BEDROCK_MODS) if self.state.get("bedrock") else set()
         return {"ok": True, "version": self.state["version"],
                 "standard": self.state["jar"] == "server.jar" and bool(self.state["version"]),
                 "bedrock": bool(self.state.get("bedrock")),
-                "mods": [{"project": p, **info, "file": installed.get(p)}
+                "mods": [self.mod_info(p, info, installed.get(p))
                          for p, info in sorted(own.items(), key=lambda i: i[1]["title"].lower())],
                 "jars": [{"file": f, **info} for f, info in sorted(self.state["mod_jars"].items())],
                 "also": sorted(p for p in installed if p not in own and p not in bedrock)}
@@ -1024,7 +1044,9 @@ class Server:
         await self.change_mods(await self.mod_plan(self.state["version"], own=own))
         self.state.update(own_mods=own)
         log(f"mod added: {slug} ({self.state['mods'].get(slug)})")
-        return {"ok": True, "title": title, "client": own[slug]["client"], "note": self.restart_note()}
+        note = " ".join(n for n in (self.players_note(slug, title), self.restart_note()) if n)
+        return {"ok": True, "title": title, "client": self.mod_info(slug, own[slug], None)["client"],
+                "note": note or None}
 
     async def put_mod_jar(self, upload, name):
         """A Fabric mod's jar file, as the owner brings it."""
@@ -1331,10 +1353,13 @@ def fabric_plan(version, bedrock, own):
     """What the server needs on Fabric for a Minecraft version: the newest builds of
     Bedrock's mods (Fabric API, Geyser, Floodgate) if `bedrock`, of the owner's mods
     (`own`, {slug: {"title": ...}}) and of every mod those need, and Fabric's launcher.
+    "players_need" says, for each of the owner's mods, which mods it needs that players
+    must have too: a mod can run on the server only while a library it needs adds items.
 
     Refuses when one of them has no build for that version (yet).
     """
     mods, seen = {}, set()
+    needs, players_must = {}, {}  # slug -> slugs it needs; slug -> title, when players need it
     queue = [(p, None) for p in (BEDROCK_MODS if bedrock else ())] + [(p, "own") for p in own]
     while queue:
         project, wanted_by = queue.pop(0)
@@ -1359,17 +1384,31 @@ def fabric_plan(version, bedrock, own):
                 continue
             need_id = need.get("project_id") or \
                 http_json(f"{MODRINTH_API}/version/{need['version_id']}")["project_id"]
+            # By slug, so the same mod has one name however it was asked for.
+            info = modrinth_project(need_id)
+            needs.setdefault(project, []).append(info["slug"])
+            if info.get("client_side") == "required":
+                players_must[info["slug"]] = info["title"]
             if need_id not in seen:
-                # By slug, so the same mod has one name however it was asked for.
-                queue.append((modrinth_project(need_id)["slug"],
-                              own.get(project, {}).get("title") or project))
+                queue.append((info["slug"], own.get(project, {}).get("title") or project))
     quoted = urllib.parse.quote(version)
     loader = next((l["loader"]["version"] for l in http_json(f"{FABRIC_META}/loader/{quoted}")
                    if l["loader"]["stable"]), None)
     installer = next((i["version"] for i in http_json(f"{FABRIC_META}/installer") if i["stable"]), None)
     if not loader or not installer:
         raise Refused(f"Mods can't run on Minecraft {version}: Fabric does not support it.")
-    return {"version": version, "mods": mods,
+    players_need = {}
+    for root in own:
+        found, stack = set(), list(needs.get(root, []))
+        while stack:  # everything the mod needs, and what those need
+            dep = stack.pop()
+            if dep not in found and dep != root:
+                found.add(dep)
+                stack.extend(needs.get(dep, []))
+        titles = sorted(players_must[d] for d in found if d in players_must)
+        if titles:
+            players_need[root] = titles
+    return {"version": version, "mods": mods, "players_need": players_need,
             "launcher": f"{FABRIC_META}/loader/{quoted}/{loader}/{installer}/server/jar"}
 
 

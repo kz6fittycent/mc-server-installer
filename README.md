@@ -157,7 +157,9 @@ for each one. Mods that only change how the server works (performance, world
 generation, admin tools) run on the server alone. Mods that add new blocks,
 items or creatures must also be in each player's Minecraft, with Fabric and the
 same Minecraft version, or those players can't join. Mods like that generally
-don't work for Bedrock players.
+don't work for Bedrock players. A mod that runs on the server alone can still
+need another mod that players must have too (a library that adds items, for
+example); the menu says so when you add it, and shows it in the list.
 
 Mod changes count from the next time the server starts. Mods run as part of the
 server, so add only ones you trust.
