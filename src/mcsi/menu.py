@@ -15,6 +15,7 @@ import re
 import shutil
 import time
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -790,6 +791,14 @@ class Settings(ModalScreen[None]):
         self.dismiss(None)
 
 
+def shorten(text, limit=140):
+    """A mod's description on one tidy line: no line breaks, cut at a word with an ellipsis."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,.;:-") + "…"
+
+
 class Pick(ModalScreen[int | None]):
     """A question with a list to choose from; dismisses with the chosen position (or None)."""
 
@@ -798,10 +807,14 @@ class Pick(ModalScreen[int | None]):
         self.message, self.labels = message, labels
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog tall"):
+        with Vertical(classes="dialog wide"):
             yield Static(self.message)
-            yield OptionList(*(Option(label, id=str(n)) for n, label in enumerate(self.labels)),
-                             id="pick-list")
+            options = []
+            for n, label in enumerate(self.labels):
+                if n:
+                    options.append(None)  # a line between choices, so long ones don't run together
+                options.append(Option(label, id=str(n)))
+            yield OptionList(*options, id="pick-list")
             with Horizontal(classes="buttons"):
                 yield Button("Cancel", id="cancel")
 
@@ -917,8 +930,9 @@ class Mods(ModalScreen[None]):
                                       f"{found['version']} match \"{query}\". Try other words.",
                                       severity="warning", timeout=8)
             return
-        labels = [f"{h['title']}{' (added)' if h['added'] else ''}  ·  "
-                  f"{CLIENT_SHORT.get(h['client'], '')}  ·  {h['description'][:60]}" for h in hits]
+        labels = [Text.assemble((h["title"], "bold"), " (added)" if h["added"] else "",
+                                f"  ·  {CLIENT_SHORT.get(h['client'], '')}\n",
+                                (shorten(h["description"]), "dim")) for h in hits]
         self.app.call_from_thread(
             self.app.push_screen,
             Pick(f"[b]Mods on Modrinth[/] for Minecraft {found['version']} matching \"{query}\". "
