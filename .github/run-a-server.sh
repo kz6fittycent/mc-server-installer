@@ -83,5 +83,8 @@ $C start ram_mb=2048 >/dev/null
 wait_ready
 sudo grep -q "lithium" "$CONSOLE" || fail "Fabric did not load the mod"
 stop_cleanly
+# Lithium is optional for players, so the pack is refused, after looking up every installed jar.
+pack_reply="$($C mod-pack 2>&1 || true)"
+grep -q "nothing from Modrinth" <<<"$pack_reply" || fail "mod-pack: $pack_reply"
 [[ "$($C mod-remove project=lithium | field ok)" == True ]] || fail "removing the mod was refused"
 echo "All good on $(uname -m)."

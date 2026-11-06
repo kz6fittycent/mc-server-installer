@@ -10,11 +10,14 @@ The 17 options of 14.x keep their order, wording and number keys; a two-digit
 number is typed quickly (1 then 3 for 13).
 """
 
+import json
 import os
 import re
 import shutil
 import time
+import zipfile
 
+from rich.markup import escape
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -109,7 +112,8 @@ was running before.
   name, or add a mod's .jar file. Mods from Modrinth come in the right
   version and follow Minecraft updates. Some mods (new blocks, items or
   creatures) must also be installed in each player's Minecraft; the menu
-  says which. Mods run as part of the server, so add only ones you trust.
+  says which, and **Pack for players** saves those mods as a file to send
+  them. Mods run as part of the server, so add only ones you trust.
 - **A specific version** (option 18): for when the latest Minecraft has a
   problem. Everyone's game must be set to the same version.
 - **Updates:** when a new Minecraft comes out, the top of this window says
@@ -274,14 +278,14 @@ class Choose(ModalScreen[str | None]):
 
 
 class Ask(ModalScreen[str | None]):
-    def __init__(self, question, placeholder=""):
+    def __init__(self, question, placeholder="", value=""):
         super().__init__()
-        self.question, self.placeholder = question, placeholder
+        self.question, self.placeholder, self.value = question, placeholder, value
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Static(self.question)
-            yield Input(placeholder=self.placeholder, id="answer")
+            yield Input(self.value, placeholder=self.placeholder, id="answer")
             with Horizontal(classes="buttons"):
                 yield Button("OK", variant="primary", id="ok")
                 yield Button("Cancel", id="cancel")
@@ -844,6 +848,8 @@ class Mods(ModalScreen[None]):
                 yield Button("Find a mod", variant="primary", id="find")
                 yield Button("Add a jar file", id="jar")
                 yield Button("Remove", id="remove")
+            with Horizontal(classes="buttons"):
+                yield Button("Pack for players", id="pack")
                 yield Button("Close", id="close")
 
     def on_mount(self):
@@ -898,6 +904,8 @@ class Mods(ModalScreen[None]):
         elif action == "jar":
             self.app.push_screen(Ask("The full path to the mod's .jar file (a Fabric mod), for "
                                      "example ~/Downloads/mymod.jar", "~/"), self.put_jar)
+        elif action == "pack":
+            self.make_pack()
         elif action == "remove":
             listing = self.query_one(OptionList)
             option = (listing.get_option_at_index(listing.highlighted)
@@ -972,6 +980,55 @@ class Mods(ModalScreen[None]):
                                   timeout=12)
         self.app.call_from_thread(self.load)
 
+    @work(thread=True)
+    def make_pack(self):
+        self.app.call_from_thread(self.app.notify, "Looking up what players need…", timeout=4)
+        try:
+            pack = client.request("mod-pack")
+        except client.ServiceError as error:
+            self.app.call_from_thread(self.app.notify, str(error), severity="error", timeout=12,
+                                      markup=False)
+            return
+        stem = re.sub(r"[^a-z0-9]+", "-", pack["index"]["name"].lower().replace("'", "")).strip("-")
+        self.app.call_from_thread(
+            self.app.push_screen,
+            Ask("Save the pack of mods players need where? You can then send it to them.",
+                value=f"~/{stem or 'minecraft-server'}.mrpack"),
+            lambda path: path and self.place_pack(pack, path))
+
+    def place_pack(self, pack, path):
+        if path.startswith("~"):
+            path = REAL_HOME + path[1:]
+        if not path.endswith(".mrpack"):
+            path += ".mrpack"
+        if os.path.exists(path):
+            self.app.push_screen(Confirm(f"Replace {escape(path)}?", yes="Replace"),
+                                 lambda yes: yes and self.save_pack(pack, path))
+        else:
+            self.save_pack(pack, path)
+
+    def save_pack(self, pack, path):
+        partial = path + ".part"
+        try:
+            with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as saved:
+                saved.writestr("modrinth.index.json", json.dumps(pack["index"], indent=2))
+            os.replace(partial, path)
+        except OSError as error:
+            self.notify(f"Couldn't save {path}: {error.strerror or error}", severity="error",
+                        timeout=12, markup=False)
+            return
+        lines = [f"Saved {path} with {', '.join(pack['mods'])}. Players open it in MC Mods (from "
+                 "the mc-installer snap) or another launcher that reads Modrinth packs, then "
+                 "join from that profile."]
+        if pack["jars"]:
+            lines.append(f"Not in the pack: your jar files ({', '.join(pack['jars'])}). Send "
+                         "them yourself if players need them.")
+        if pack["check"]:
+            lines.append(f"Check whether players need these too: {', '.join(pack['check'])}.")
+        if pack.get("note"):
+            lines.append(pack["note"])
+        self.notify("\n".join(lines), timeout=30, markup=False)
+
     def key_escape(self):
         self.dismiss(None)
 
@@ -994,6 +1051,7 @@ class Menu(App):
     .dialog VerticalScroll { height: 1fr; }
     .buttons { height: auto; margin-top: 1; align-horizontal: right; }
     .buttons Button { margin-left: 1; }
+    Mods .buttons { margin-top: 0; }
     Confirm, Ask, Choose, Pick, Properties, Help, Players, Backups, Settings, Mods {
         align: center middle; }
     .choice { width: 100%; margin-top: 1; }

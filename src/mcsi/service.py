@@ -103,7 +103,7 @@ HOUSEKEEPING_EVERY = 3600
 STARTUP_WAIT = 120        # seconds a command waits for the server to finish starting
 
 # Requests anyone on the computer may make; everything else is the owner's.
-READ_ONLY = {"status", "log", "get-properties", "list-backups", "players", "mods"}
+READ_ONLY = {"status", "log", "get-properties", "list-backups", "players", "mods", "mod-pack"}
 
 PLAYER_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 # Floodgate's name for a Bedrock player: a dot, then the gamertag with spaces as underscores.
@@ -1003,6 +1003,29 @@ class Server:
                 "jars": [{"file": f, **info} for f, info in sorted(self.state["mod_jars"].items())],
                 "also": sorted(p for p in installed if p not in own and p not in bedrock)}
 
+    async def players_pack(self):
+        """A Modrinth modpack (modrinth.index.json) of the mods players need to join, for the
+        menu to save as a .mrpack: the builds this server has, downloaded from Modrinth."""
+        self.need_standard()
+        if not self.fabric_needed() or not (self.state["own_mods"] or self.state["mod_jars"]):
+            raise Refused("Players don't need any mods to join this server, so there is nothing "
+                          "to share.")
+        version = self.state["version"]
+        name = re.sub(r"(§|\\u00[aA]7).", "", self.properties().get("motd") or "").strip()
+        try:
+            async with self.mods_lock:  # an update swaps the mods folder
+                pack = await asyncio.to_thread(players_pack, version, name or "Minecraft server",
+                                               self.state["own_mods"], self.state["mod_jars"],
+                                               self.state["mods"])
+        except (urllib.error.URLError, TimeoutError):
+            raise Refused("Couldn't reach Modrinth to look up the mods. Check the internet "
+                          "connection and try again.")
+        note = None
+        if self.restart_waiting() == "mods":
+            note = ("This pack has your latest mod changes, which the server hasn't started with "
+                    "yet: stop it (13) and start it again.")
+        return {"ok": True, **pack, "note": note}
+
     async def search_mods(self, query):
         self.need_standard()
         query = str(query or "").strip()
@@ -1349,6 +1372,13 @@ def newest_build(project, version):
     return builds[0] if builds else None
 
 
+def stable_fabric_loader(version):
+    """Fabric's newest stable loader for a Minecraft version, or None."""
+    quoted = urllib.parse.quote(version)
+    return next((l["loader"]["version"] for l in http_json(f"{FABRIC_META}/loader/{quoted}")
+                 if l["loader"]["stable"]), None)
+
+
 def fabric_plan(version, bedrock, own):
     """What the server needs on Fabric for a Minecraft version: the newest builds of
     Bedrock's mods (Fabric API, Geyser, Floodgate) if `bedrock`, of the owner's mods
@@ -1392,8 +1422,7 @@ def fabric_plan(version, bedrock, own):
             if need_id not in seen:
                 queue.append((info["slug"], own.get(project, {}).get("title") or project))
     quoted = urllib.parse.quote(version)
-    loader = next((l["loader"]["version"] for l in http_json(f"{FABRIC_META}/loader/{quoted}")
-                   if l["loader"]["stable"]), None)
+    loader = stable_fabric_loader(version)
     installer = next((i["version"] for i in http_json(f"{FABRIC_META}/installer") if i["stable"]), None)
     if not loader or not installer:
         raise Refused(f"Mods can't run on Minecraft {version}: Fabric does not support it.")
@@ -1410,6 +1439,75 @@ def fabric_plan(version, bedrock, own):
             players_need[root] = titles
     return {"version": version, "mods": mods, "players_need": players_need,
             "launcher": f"{FABRIC_META}/loader/{quoted}/{loader}/{installer}/server/jar"}
+
+
+def players_pack(version, name, own, jars, installed):
+    """What players need to join, as a Modrinth modpack's index: the mods they must have, and
+    what those need, in the builds this server has. Modrinth says which build each file is by
+    its checksum. Starts from the owner's mods, so Bedrock's (server only) stay out.
+
+    "jars" and "check" are what the pack can't settle: the owner's own jar files, which aren't
+    on Modrinth, and mods Modrinth doesn't say players need or not.
+    """
+    builds, starts, also, check = {}, set(), set(), []
+    jars_for_players = [j for j in jars.values() if j.get("client") != "unsupported"]
+    for project, filename in installed.items():
+        with open(os.path.join(BEDROCK_DIR, "current", "mods", filename), "rb") as f:
+            sha1 = hashlib.file_digest(f, "sha1").hexdigest()
+        try:
+            build = http_json(f"{MODRINTH_API}/version_file/{sha1}?algorithm=sha1")
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            check.append(filename)  # gone from Modrinth since it was installed
+            continue
+        file = next(f for f in build["files"] if f["hashes"].get("sha1") == sha1)
+        builds[build["project_id"]] = (build, file, modrinth_project(build["project_id"]))
+        if project in own:
+            starts.add(build["project_id"])
+        if project == "fabric-api" and any(j.get("fabric_api") for j in jars_for_players):
+            also.add(build["project_id"])  # those jars won't load without it
+
+    def with_needs(projects, leave_out=()):
+        found, stack = set(), list(projects)
+        while stack:
+            project = stack.pop()
+            if project in found or project not in builds \
+                    or builds[project][2].get("client_side") in leave_out:
+                continue
+            found.add(project)
+            for need in builds[project][0].get("dependencies") or []:
+                if need.get("dependency_type") == "required":
+                    stack.append(need.get("project_id") or http_json(
+                        f"{MODRINTH_API}/version/{need['version_id']}")["project_id"])
+        return found
+
+    reached = with_needs(starts)
+    must = {p for p in reached if builds[p][2].get("client_side") == "required"}
+    wanted = with_needs(must | also, leave_out=("unsupported",))
+    check += sorted(builds[p][2]["title"] for p in reached - wanted
+                    if builds[p][2].get("client_side") not in ("optional", "unsupported", "required"))
+    jar_names = sorted(j["name"] for j in jars_for_players)
+    if not wanted:
+        unsettled = jar_names + check
+        raise Refused("There is nothing from Modrinth to put in a pack. " + (
+            f"Check whether players need these, and send them yourself: {', '.join(unsettled)}."
+            if unsettled else "Players don't need any of these mods to join."))
+    loader = stable_fabric_loader(version)
+    if not loader:
+        raise Refused(f"Fabric does not support Minecraft {version}.")
+    files = [{"path": f"mods/{file['filename']}",
+              "hashes": {"sha1": file["hashes"]["sha1"], "sha512": file["hashes"]["sha512"]},
+              "env": {"client": "required", "server": "required"},
+              "downloads": [file["url"]], "fileSize": file["size"]}
+             for _, file, _ in (builds[p] for p in wanted)]
+    index = {"formatVersion": 1, "game": "minecraft", "name": name,
+             "versionId": time.strftime("%Y-%m-%d"),
+             "summary": f"The mods players need to join {name}.",
+             "files": sorted(files, key=lambda f: f["path"]),
+             "dependencies": {"minecraft": version, "fabric-loader": loader}}
+    return {"index": index, "mods": sorted(builds[p][2]["title"] for p in wanted),
+            "jars": jar_names, "check": check}
 
 
 def inspect_mod_jar(path):
@@ -1670,6 +1768,8 @@ async def main():
                 reply = {"ok": True}
             elif name == "mods":
                 reply = server.mods_info()
+            elif name == "mod-pack":
+                reply = await server.players_pack()
             elif name == "mod-search":
                 reply = await server.search_mods(request.get("query"))
             elif name == "mod-add":

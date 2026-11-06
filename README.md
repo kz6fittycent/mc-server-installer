@@ -164,6 +164,17 @@ example); the menu says so when you add it, and shows it in the list.
 Mod changes count from the next time the server starts. Mods run as part of the
 server, so add only ones you trust.
 
+**Giving players the mods.** A server can't send mods to someone's Minecraft by
+itself, so **Pack for players** saves the mods they need as a `.mrpack` file (a
+Modrinth modpack) in your Home folder, for you to send them. They open it in MC
+Mods, from the [mc-installer](https://snapcraft.io/mc-installer) snap, or another
+launcher that reads Modrinth packs. It sets up Fabric and a profile for your
+server, and downloads each mod from Modrinth, checked against Modrinth's checksum.
+The pack holds no mods itself, only which ones to get. Your own jar files aren't on
+Modrinth, so they stay out of it, and the menu says to send those yourself. Make a
+new pack when the mods or Minecraft change: opening it updates the same profile, as
+long as the server name is the same.
+
 ![Mods: Lithium, Terralith and Better Villages from Modrinth, and what players need (Better Villages needs Library Ferret)](docs/screenshots/mods.png)
 
 ### Backups

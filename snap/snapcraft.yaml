@@ -19,7 +19,8 @@ description: |
     Microsoft accounts - through GeyserMC and Floodgate, set up for you.
   - Mods: find Fabric mods on Modrinth by name, or add a mod's jar file. Mods
     from Modrinth come in the right version, with the mods they need, and follow
-    Minecraft updates. The menu says whether players need a mod too.
+    Minecraft updates. The menu says whether players need a mod too, and saves
+    the ones they need as a modpack file to send them.
   - Operators can use commands from inside the game.
   - Daily backups while the server runs (the newest 7 are kept), plus a backup
     before every update or restore. Restore any of them from the menu.
