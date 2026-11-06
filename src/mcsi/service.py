@@ -179,7 +179,7 @@ class State:
                      "previous_version": None, "pinned": False, "main_level": None,
                      "bedrock": False, "mods": {}, "bedrock_seen": {},
                      "geyser_moved_on": None, "own_mods": {}, "mod_jars": {},
-                     "players_need": {}}
+                     "players_need": {}, "plan_revision": None}
         try:
             with open(STATE_FILE) as f:
                 self.data.update(json.load(f))
@@ -862,6 +862,7 @@ class Server:
         await self.check_geyser()
         while True:
             try:
+                await self.players_need_after_update()
                 if time.time() - self.state["latest_checked"] > DAY:
                     await self.check_for_update()
                     await self.refresh_mods()
@@ -872,6 +873,22 @@ class Server:
             except Exception as error:  # never let housekeeping take the service down
                 log(f"housekeeping: {error!r}")
             await asyncio.sleep(HOUSEKEEPING_EVERY)
+
+    async def players_need_after_update(self):
+        """What players need, worked out again the first time a new revision of this snap
+        runs: it may judge that differently, and the Mods list shouldn't wait for the daily
+        refresh to say so. Tried again next hour if Modrinth can't be reached."""
+        revision = os.environ.get("SNAP_REVISION")
+        if revision == self.state.get("plan_revision"):
+            return
+        if self.fabric_needed():
+            try:
+                plan = await self.mod_plan(self.state["version"])
+            except Exception as error:
+                log(f"could not check what players need: {error}")
+                return
+            self.state.update(players_need=plan["players_need"])
+        self.state.update(plan_revision=revision)
 
     async def refresh_mods(self):
         """Newer builds of the mods for the same Minecraft: Geyser's follow Bedrock's own
