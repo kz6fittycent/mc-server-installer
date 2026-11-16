@@ -1,0 +1,30 @@
+name: 🤖 Dependabot Auto-Merge
+
+# Dependabot's patch and minor updates merge themselves once the checks the
+# ruleset on master requires have passed. Major updates (which can change how
+# an action works) wait for a person.
+#
+# The merge is made with the Actions token, so it doesn't start the push
+# workflows on master: nothing is rebuilt or published for it. The PR was
+# already built and tested.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'kz6fittycent/mc-server-installer'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read what Dependabot is updating
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+      - name: Merge once the checks pass (not major updates)
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
