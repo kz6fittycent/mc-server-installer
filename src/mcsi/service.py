@@ -48,6 +48,7 @@ import glob
 import hashlib
 import json
 import os
+import platform
 import pwd
 import re
 import shutil
@@ -145,6 +146,16 @@ def user_name(uid):
         return pwd.getpwuid(uid).pw_name
     except KeyError:
         return str(uid)
+
+
+def java4shell_mitigation():
+    """JVM flags for Java4Shell (CVE-2026-114938), a heap overflow in
+    OpenJDK's AVX-512 Base64 decoder. -XX:UseAVX=2 turns those code paths
+    off. x86 only: arm64 is unaffected and its JVM rejects the flag. Remove
+    once the snap's openjdk-25 has the fix (25.0.5.1)."""
+    if platform.machine() in ("x86_64", "AMD64"):
+        return ["-XX:UseAVX=2"]
+    return []
 
 
 def java_binary():
@@ -288,7 +299,8 @@ class Server:
         if os.path.exists(console_path) and os.stat(console_path).st_uid != 0:
             os.replace(console_path, console_path + ".old")
         self.process = await asyncio.create_subprocess_exec(
-            *as_daemon(java_binary(), "-Xms128M", f"-Xmx{ram_mb}M", "-XX:+UseG1GC",
+            *as_daemon(java_binary(), *java4shell_mitigation(),
+                       "-Xms128M", f"-Xmx{ram_mb}M", "-XX:+UseG1GC",
                        *launch, "nogui"),
             cwd=SERVER_DIR, stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
