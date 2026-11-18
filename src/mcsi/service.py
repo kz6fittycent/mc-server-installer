@@ -48,7 +48,6 @@ import glob
 import hashlib
 import json
 import os
-import platform
 import pwd
 import re
 import shutil
@@ -150,12 +149,11 @@ def user_name(uid):
 
 def java4shell_mitigation():
     """JVM flags for Java4Shell (CVE-2026-114938), a heap overflow in
-    OpenJDK's AVX-512 Base64 decoder. -XX:UseAVX=2 turns those code paths
-    off. x86 only: arm64 is unaffected and its JVM rejects the flag. Remove
-    once the snap's openjdk-25 has the fix (25.0.5.1)."""
-    if platform.machine() in ("x86_64", "AMD64"):
-        return ["-XX:UseAVX=2"]
-    return []
+    OpenJDK's AVX-512 Base64 intrinsic. These turn off just that intrinsic,
+    the same flags Mojang added to the game's own launch arguments (cheaper
+    than -XX:UseAVX=2, and valid on every architecture). Remove once the
+    snap's openjdk-25 has the fix (25.0.5.1)."""
+    return ["-XX:+UnlockDiagnosticVMOptions", "-XX:-UseBASE64Intrinsics"]
 
 
 def java_binary():
