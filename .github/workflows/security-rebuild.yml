@@ -8,7 +8,7 @@ name: 🛡️ Security Rebuild
 #
 # 1. rebuilds the snap from the exact commit that stable revision was built
 #    from - never from master, which may hold unreleased work. That commit
-#    is the "snap-rev-<revision>" tag call-for-testing.yml pushes for every
+#    is the "snap-rev-<revision>" tag test-snap-can-build.yml pushes for every
 #    revision it uploads, or, for revisions this workflow uploads, a
 #    "snap-rev-<revision>" line in the git notes refs/notes/snap-revisions.
 #    (The Actions token can't tag an older commit whose workflow files
@@ -249,7 +249,7 @@ jobs:
               if [[ "$(cat candidate-unfixed)" == 0 ]]; then
                 advice="This candidate doesn't have them, so promoting it fixes stable."
               else
-                advice="This candidate has $(cat candidate-unfixed) of them too: rebuild it (Actions → 📣 Call for Testing → Run workflow) before promoting."
+                advice="This candidate has $(cat candidate-unfixed) of them too: rebuild it (Actions → 🧪 Snap Builds → Run workflow, from master) before promoting."
               fi
               advice+=" If a fix can't wait for this release: Actions → 🛡️ Security Rebuild → Run workflow, with dry_run off and beside_candidate on, rebuilds stable into \`candidate/security\` without touching this candidate."
               notices="$(python3 -c "import json; [print(f'- \`{p}\`: ' + ', '.join(u)) for p, u in sorted(json.load(open('notices.json')).items())]")"
@@ -327,7 +327,7 @@ jobs:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
           CHANNEL: ${{ needs.check.outputs.channel }}
         run: |
-          # "candidate", not "latest/candidate" - see call-for-testing.yml.
+          # "candidate", not "latest/candidate" - see test-snap-can-build.yml.
           # candidate/security (beside_candidate) is a branch: the store login
           # may not be allowed to release to one.
           output="$(snapcraft upload "${{ steps.build.outputs.snap }}" --release="$CHANNEL")" || {
