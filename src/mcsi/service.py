@@ -147,15 +147,6 @@ def user_name(uid):
         return str(uid)
 
 
-def java4shell_mitigation():
-    """JVM flags for Java4Shell (CVE-2026-114938), a heap overflow in
-    OpenJDK's AVX-512 Base64 intrinsic. These turn off just that intrinsic,
-    the same flags Mojang added to the game's own launch arguments (cheaper
-    than -XX:UseAVX=2, and valid on every architecture). Remove once the
-    snap's openjdk-25 has the fix (25.0.5.1)."""
-    return ["-XX:+UnlockDiagnosticVMOptions", "-XX:-UseBASE64Intrinsics"]
-
-
 def java_binary():
     found = sorted(glob.glob(os.path.join(SNAP, "usr/lib/jvm/java-*/bin/java")))
     if not found:
@@ -297,8 +288,7 @@ class Server:
         if os.path.exists(console_path) and os.stat(console_path).st_uid != 0:
             os.replace(console_path, console_path + ".old")
         self.process = await asyncio.create_subprocess_exec(
-            *as_daemon(java_binary(), *java4shell_mitigation(),
-                       "-Xms128M", f"-Xmx{ram_mb}M", "-XX:+UseG1GC",
+            *as_daemon(java_binary(), "-Xms128M", f"-Xmx{ram_mb}M", "-XX:+UseG1GC",
                        *launch, "nogui"),
             cwd=SERVER_DIR, stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
